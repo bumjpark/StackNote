@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # 로컬의 SQLite 파일을 컨테이너와 공유하여 데이터 유지
+      - ./backend/sql_app.db:/app/sql_app.db
+    # 환경변수를 설정하지 않으면 코드는 자동으로 SQLite를 사용합니다.
+    # MySQL 사용 시 아래 주석 해제 후 설정
+    # environment:
+    #   - MYSQL_DATABASE_URL=mysql+pymysql://user:password@db:3306/dbname
