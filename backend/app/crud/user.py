@@ -1,5 +1,5 @@
-from models import User
-from schemas.user import UserPostRequest
+from app.models import User
+from app.schemas.user import UserPostRequest
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from datetime import datetime

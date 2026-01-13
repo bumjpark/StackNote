@@ -21,5 +21,8 @@ class User(Base):
         onupdate=lambda: datetime.now(KST),
     )
     is_deleted = Column(Boolean, default=False)
-    reports = relationship("Report", back_populates="user")
-    chatrooms = relationship("Chatroom", back_populates="user")
+
+
+    # 설계도 자체가 아직 구현되지 않아서 오류가 나서 임시로 주석처리, 추후 기능 구현되면 주석 해제
+    # reports = relationship("Report", back_populates="user")
+    # chatrooms = relationship("Chatroom", back_populates="user")
