@@ -29,7 +29,7 @@ class WorkSpace(Base):
 class Page(Base):
     __tablename__ = "page_list"
 
-    id = Column(String(10), primary_key=True)
+    id = Column(Integer, primary_key=True)
     workspace_id = Column(Integer, ForeignKey("work_space.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
@@ -42,8 +42,8 @@ class Page(Base):
 class Block(Base):
     __tablename__ = "block_list"
 
-    id = Column(String(10), primary_key=True)
-    page_id = Column(String(10), ForeignKey("page_list.id"), nullable=False)
+    id = Column(Integer, primary_key=True)
+    page_id = Column(Integer, ForeignKey("page_list.id"), nullable=False)
     workspace_id = Column(Integer, ForeignKey("work_space.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)

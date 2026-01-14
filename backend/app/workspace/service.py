@@ -2,8 +2,9 @@
 
 from sqlalchemy.orm import Session
 
-from .model import WorkSpace
+from .model import WorkSpace,PageList
 from .schema import WorkspaceRequest
+
 
 
 def create_workspace(
@@ -51,3 +52,58 @@ def delete_workspace(
     db.refresh(workspace)
 
     return workspace
+
+def create_page_list(
+    db: Session,
+    page_list_data: PageListCreateRequest
+) -> list[int]:
+    """
+    페이지 리스트 생성 (여러 페이지 한번에)
+    """
+
+    created_page_ids: list[int] = []
+
+    for page_name in page_list_data.page_list:
+        page = Page(
+            workspace_id=page_list_data.work_space_id,
+            user_id=page_list_data.user_id,
+            page_name=page_name,
+            is_deleted=False
+        )
+        db.add(page)
+        db.flush()  # id 생성
+        created_page_ids.append(page.id)
+
+    db.commit()
+
+    return created_page_ids
+
+def delete_page_list(
+    db: Session,
+    *,
+    workspace_id: int
+) -> int:
+    """
+    페이지 리스트 삭제 (워크스페이스 기준 soft delete)
+
+    return: 삭제된 페이지 개수
+    """
+
+    pages = (
+        db.query(Page)
+        .filter(
+            Page.workspace_id == workspace_id,
+            Page.is_deleted == False
+        )
+        .all()
+    )
+
+    if not pages:
+        return 0
+
+    for page in pages:
+        page.is_deleted = True
+
+    db.commit()
+
+    return len(pages)

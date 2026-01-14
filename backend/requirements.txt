@@ -5,3 +5,4 @@ pydantic
 pytz
 pymysql
 python-dotenv
+cryptography
