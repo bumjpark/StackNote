@@ -6,6 +6,7 @@ import secrets
 
 from app.core.database import get_db
 from .model import WorkSpace, Page
+from . import service
 from .schema import (
     WorkspaceRequest,
     WorkspaceResponse,
@@ -33,7 +34,19 @@ def create_workspace(
     request: WorkspaceRequest,
     db: Session = Depends(get_db)
 ):
-    workspace = service.create_workspace(db, request)
+    # 1️⃣ 워크스페이스 생성
+    workspace = service.create_workspace(
+        db=db,
+        workspace_data=request
+    )
+
+    # 2️⃣ 기본 페이지 자동 생성
+    service.create_default_pages(
+        db=db,
+        workspace_id=workspace.id,
+        user_id=request.user_id
+    )
+
     return WorkspaceResponse(
         status="success",
         user=WorkspaceUserResponse(
@@ -116,6 +129,7 @@ def create_page_list(
             workspace_id=request.work_space_id,
             user_id=request.user_id,
             page_name=page_name,
+            page_type=request.page_type,
             is_deleted=False
         )
         db.add(page)

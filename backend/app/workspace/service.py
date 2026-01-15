@@ -4,8 +4,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 import uuid
 
-from .model import WorkSpace, Block, Page
-from .schema import WorkspaceRequest, BlockCreate, BlockUpdate, PageListCreateRequest
+
+from .model import WorkSpace,Page
+from .schema import WorkspaceRequest,PageListCreateRequest
+from .constants import DEFAULT_PAGES
+
 def create_workspace(
     db: Session,
     workspace_data: WorkspaceRequest
@@ -48,6 +51,31 @@ def delete_workspace(
     return workspace
 
     return workspace
+
+
+def create_default_pages(
+    db: Session,
+    workspace_id: int,
+    user_id: int
+) -> list[int]:
+    """
+    워크스페이스 생성 시 기본 페이지 생성
+    """
+    created_page_ids: list[int] = []
+
+    for page in DEFAULT_PAGES:
+        new_page = Page(
+            workspace_id=workspace_id,
+            user_id=user_id,
+            page_name=page["page_name"],
+            page_type=page["page_type"],
+            is_deleted=False
+        )
+        db.add(new_page)
+        db.flush()  # id 생성
+        created_page_ids.append(new_page.id)
+
+    return created_page_ids
 
 # =========================
 # Block CRUD & Logic
