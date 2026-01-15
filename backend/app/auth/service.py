@@ -45,7 +45,12 @@ def delete_user(user_id :int, db :Session):
     db.commit()
 
     return{"status": "success", "message": "User deleted successfully"}
-    
+
+def check_email_exists(email_id: str, db: Session):
+    user = db.query(User).filter(User.email_id == email_id).first()
+    if user:
+        return {"status": "exists", "message": "Email already registered", "exists": True}
+    return {"status": "available", "message": "Email is available", "exists": False}
 
 
         
