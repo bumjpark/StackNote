@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
 import pytz
+import uuid
 from app.core.database import Base
 
 KST = pytz.timezone("Asia/Seoul")
@@ -29,7 +30,7 @@ class WorkSpace(Base):
 class Page(Base):
     __tablename__ = "page_list"
 
-    id = Column(String(50), primary_key=True)
+    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
     workspace_id = Column(Integer, ForeignKey("work_space.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
@@ -39,25 +40,21 @@ class Page(Base):
 
     page_name = Column(String(100), nullable=False)
 
-class Block(Base):
-    __tablename__ = "block_list"
-
-    id = Column(String(50), primary_key=True)
-    page_id = Column(String(50), ForeignKey("page_list.id"), nullable=False)
+class VoiceChannel(Base):
+    __tablename__ = "voice_channel"
+    
+    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
     workspace_id = Column(Integer, ForeignKey("work_space.id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
+    name = Column(String(100), nullable=False)
+    
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime, server_default=func.now(),
-                        onupdate=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False)
 
-    block_type = Column(String(50), nullable=False) # text, h1, h2, image, etc.
-    content = Column(JSON, nullable=True) # {"text": "Hello", "checked": false, ...}
-    order = Column(Float, nullable=False, index=True) # Lexical order (e.g., 1.0, 1.5, 2.0)
-    parent_id = Column(String(50), ForeignKey("block_list.id"), nullable=True) # For nested blocks
-    
-    # Relationships
-    parent = relationship("Block", remote_side=[id], backref="children")
+# Block class removed to avoid conflict with app.models.ContentBlock
+# class Block(Base):
+#     __tablename__ = "block_list"
+# ...
 
 # =========================
 # Communication Models (Consolidated here for now)

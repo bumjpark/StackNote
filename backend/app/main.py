@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from app.auth import router as user_router
 from app.workspace import router as workspace_router
+from app.routers import block as block_router
 from app.core.database import engine, Base
 import time
 import logging
@@ -65,3 +66,4 @@ wait_for_db()
 # 라우터 등록
 app.include_router(user_router.router, prefix="/users")
 app.include_router(workspace_router.router)
+app.include_router(block_router.router)
