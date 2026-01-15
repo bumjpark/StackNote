@@ -8,12 +8,11 @@ class WorkspaceRequest(BaseModel):
     page_type: str
 
 class WorkspaceUserResponse(BaseModel):
-    id: int
+    work_space_id: int
     work_space_name: str
 
 class WorkspaceResponse(BaseModel):
-    status: str
-    user: WorkspaceUserResponse
+    user: Optional[WorkspaceUserResponse] = None
 
 # Block Schemas
 class BlockBase(BaseModel):
@@ -44,3 +43,18 @@ class BlockResponse(BlockBase):
 
     class Config:
         orm_mode = True
+
+
+class PageListCreateRequest(BaseModel):
+    user_id: int
+    work_space_id: int
+    page_type: str
+    page_list: list[str]
+
+class PageListUserResponse(BaseModel):
+    work_space_id: int
+    page_list_id: list[int]
+
+class PageListCreateResponse(BaseModel):
+    status: str
+    user: Optional[PageListUserResponse] = None

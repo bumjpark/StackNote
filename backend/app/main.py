@@ -6,6 +6,7 @@ import time
 import logging
 from sqlalchemy.exc import OperationalError
 
+
 app = FastAPI(
     title="My FastAPI App",
     description="Backend API with SQLAlchemy + Pydantic v2",

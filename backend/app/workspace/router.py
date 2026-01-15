@@ -1,16 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from typing import List
+import string
+import secrets
 
 from app.core.database import get_db
-from .model import WorkSpace
+from .model import WorkSpace, Page
 from .schema import (
     WorkspaceRequest,
     WorkspaceResponse,
     WorkspaceUserResponse,
     BlockCreate,
     BlockUpdate,
-    BlockResponse
+    BlockResponse,
+    PageListCreateRequest,
+    PageListCreateResponse,
+    PageListUserResponse
 )
 from . import service
 
@@ -32,7 +37,7 @@ def create_workspace(
     return WorkspaceResponse(
         status="success",
         user=WorkspaceUserResponse(
-            id=workspace.id,
+            work_space_id=workspace.id,
             work_space_name=workspace.work_space_name
         )
     )
@@ -94,3 +99,60 @@ def move_block(block_id: str, target_order: float = Body(..., embed=True), db: S
     if not moved_block:
         raise HTTPException(status_code=404, detail="Block not found")
     return {"status": "success", "order": moved_block.order}
+
+# =========================
+# 페이지 리스트 생성
+# =========================
+@router.post("/page_list", response_model=PageListCreateResponse)
+def create_page_list(
+    request: PageListCreateRequest,
+    db: Session = Depends(get_db)
+):
+    created_page_ids = []
+    
+    # 요청받은 페이지 이름 리스트를 순회하며 각각 Page 생성
+    for page_name in request.page_list:
+        page = Page(
+            workspace_id=request.work_space_id,
+            user_id=request.user_id,
+            page_name=page_name,
+            is_deleted=False
+        )
+        db.add(page)
+        db.flush() # ID 발급을 위해 flush
+        db.refresh(page)
+        created_page_ids.append(page.id)
+
+    db.commit()
+
+    return PageListCreateResponse(
+        status="success",
+        user=PageListUserResponse(
+            work_space_id=request.work_space_id,
+            page_list_id=created_page_ids
+        )
+    )
+
+
+@router.delete("/page_list/{page_id}", response_model=PageListCreateResponse)
+def delete_page_exact(
+    page_id: int,
+    db: Session = Depends(get_db)
+):
+    page = db.query(Page).filter(
+        Page.id == page_id,
+        Page.is_deleted == False
+    ).first()
+
+    if not page:
+        raise HTTPException(
+            status_code=404,
+            detail="Page not found"
+        )
+
+    page.is_deleted = True
+    db.commit()
+
+    return PageListCreateResponse(
+        status="success",
+    )
