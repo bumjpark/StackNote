@@ -13,6 +13,24 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# CORS 설정
+from fastapi.middleware.cors import CORSMiddleware
+
+origins = [
+    "http://localhost:5173", # Vite default port
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "*" # 개발 편의를 위해 모든 출처 허용 (배포 시 수정 필요)
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

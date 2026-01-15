@@ -15,6 +15,5 @@ class UserLoginResponse(BaseModel):
 class UserInput(BaseModel):
     message: str
 
-
-
-    
+class UserCheckEmailRequest(BaseModel):
+    email_id: str
