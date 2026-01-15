@@ -1,18 +1,21 @@
 from fastapi import FastAPI
-from app.routers import user, work_space
+from app.auth import router as user_router
+from app.workspace import router as workspace_router
+from app.core.database import engine, Base
+from app.auth import model as auth_model
+from app.workspace import model as workspace_model
+from app.voice import model as voice_model
+
+import time
+import logging
+from sqlalchemy.exc import OperationalError
+
 
 app = FastAPI(
     title="My FastAPI App",
     description="User API",
     version="1.0.0"
 )
-from app.database import engine
-from app.models import Base
-
-import time
-import logging
-from sqlalchemy.exc import OperationalError
-
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,5 +37,5 @@ for i in range(MAX_RETRIES):
         time.sleep(RETRY_DELAY)
 
 # 라우터 등록
-app.include_router(user.router, prefix="/users")
-app.include_router(work_space.router)
+app.include_router(user_router.router, prefix="/users")
+app.include_router(workspace_router.router)
