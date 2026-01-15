@@ -10,12 +10,12 @@ import time
 import logging
 from sqlalchemy.exc import OperationalError
 
+
 app = FastAPI(
     title="My FastAPI App",
     description="User API",
     version="1.0.0"
 )
-
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
