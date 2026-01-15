@@ -1,5 +1,5 @@
 from fastapi import APIRouter ,Depends, HTTPException
-from .schema import UserPostRequest,UserLoginRequest,UserLoginResponse
+from .schema import UserPostRequest,UserLoginRequest,UserLoginResponse, UserCheckEmailRequest
 from . import service as UserServices
 from sqlalchemy.orm import Session
 from app.core.database import get_db
@@ -24,4 +24,9 @@ def login_user(login_data:UserLoginRequest, db : Session = Depends(get_db)):
 @router.delete("/{user_id}",description="유저 탈퇴", tags=["Users"])
 def delete_user(user_id : int, db : Session = Depends(get_db)):
     response = UserServices.delete_user(user_id=user_id, db=db)
+    return response
+
+@router.post("/check_email", description="이메일 가입 여부 확인", tags=["Users"])
+def check_email(data: UserCheckEmailRequest, db: Session = Depends(get_db)):
+    response = UserServices.check_email_exists(data.email_id, db)
     return response
