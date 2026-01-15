@@ -1,12 +1,11 @@
-# backend/crud/work_space.py
+# backend/app/workspace/service.py
 
 from sqlalchemy.orm import Session
+from sqlalchemy import func
+import uuid
 
-from .model import WorkSpace,PageList
-from .schema import WorkspaceRequest
-
-
-
+from .model import WorkSpace, Block, Page
+from .schema import WorkspaceRequest, BlockCreate, BlockUpdate, PageListCreateRequest
 def create_workspace(
     db: Session,
     workspace_data: WorkspaceRequest
@@ -14,16 +13,14 @@ def create_workspace(
     """
     워크스페이스 생성
     """
-
     workspace = WorkSpace(
         user_id=workspace_data.user_id,
         page_type=workspace_data.page_type,
+        work_space_name=workspace_data.work_space_name,
     )
-
     db.add(workspace)
     db.commit()
     db.refresh(workspace)
-
     return workspace
 
 
@@ -34,7 +31,6 @@ def delete_workspace(
     """
     워크스페이스 삭제 (soft delete)
     """
-
     workspace = (
         db.query(WorkSpace)
         .filter(
@@ -43,16 +39,17 @@ def delete_workspace(
         )
         .first()
     )
-
     if not workspace:
         return None
 
     workspace.is_deleted = True
     db.commit()
     db.refresh(workspace)
-
     return workspace
 
+    return update_block(db, block_id, BlockUpdate(order=target_order))
+
+    # return workspace
 def create_page_list(
     db: Session,
     page_list_data: PageListCreateRequest
@@ -107,3 +104,4 @@ def delete_page_list(
     db.commit()
 
     return len(pages)
+>>>>>>> origin/dev

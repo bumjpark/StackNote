@@ -29,7 +29,7 @@ class WorkSpace(Base):
 class Page(Base):
     __tablename__ = "page_list"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(String(50), primary_key=True)
     workspace_id = Column(Integer, ForeignKey("work_space.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
@@ -37,13 +37,13 @@ class Page(Base):
                         onupdate=func.now(), nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False)
 
-    page_name = Column(String(10), nullable=False)
+    page_name = Column(String(100), nullable=False)
 
 class Block(Base):
     __tablename__ = "block_list"
 
-    id = Column(Integer, primary_key=True)
-    page_id = Column(Integer, ForeignKey("page_list.id"), nullable=False)
+    id = Column(String(50), primary_key=True)
+    page_id = Column(String(50), ForeignKey("page_list.id"), nullable=False)
     workspace_id = Column(Integer, ForeignKey("work_space.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
@@ -51,7 +51,13 @@ class Block(Base):
                         onupdate=func.now(), nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False)
 
-    block_content = Column(Text, nullable=False)
+    block_type = Column(String(50), nullable=False) # text, h1, h2, image, etc.
+    content = Column(JSON, nullable=True) # {"text": "Hello", "checked": false, ...}
+    order = Column(Float, nullable=False, index=True) # Lexical order (e.g., 1.0, 1.5, 2.0)
+    parent_id = Column(String(50), ForeignKey("block_list.id"), nullable=True) # For nested blocks
+    
+    # Relationships
+    parent = relationship("Block", remote_side=[id], backref="children")
 
 # =========================
 # Communication Models (Consolidated here for now)

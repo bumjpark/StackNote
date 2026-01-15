@@ -2,27 +2,30 @@ version: '3.8'
 
 services:
   backend:
-    build:
-      context: ./backend
+    build: ./backend
+    container_name: stacknote-b_feat-4-backend-1
     ports:
       - "8000:8000"
     volumes:
       - ./backend/sql_app.db:/app/sql_app.db
+      - ./backend/app:/app/app        # 코드 수정 시 컨테이너에 즉시 반영되도록 추가
     env_file:
       - ./backend/.env
     depends_on:
-      - db               # MySQL이 먼저 올라오도록 설정
+      - db
+    restart: always
 
   db:
-    image: mysql:8
-    restart: always
+    image: mysql:8.0
+    container_name: stacknote-b_feat-4-db-1
     environment:
-      MYSQL_ROOT_PASSWORD: qwer5377~  # Backend 비밀번호와 일치시킴 (1234 -> qwer5377~)
-      MYSQL_DATABASE: stacknote
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
     ports:
-      - "3307:3306"
+      - "3306:3306"
     volumes:
       - db_data:/var/lib/mysql
+    restart: always
 
 volumes:
   db_data:
