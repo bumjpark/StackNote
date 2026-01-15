@@ -15,8 +15,19 @@ if os.getenv("TESTING") == "True":
 # 추후 배포 시에는 환경변수를 설정하여 MySQL을 사용해야 합니다.
 database_url = os.getenv('MYSQL_DATABASE_URL')
 
+# 개별 환경변수 확인 (DB_USER, DB_PASSWORD 등)
+if not database_url:
+    db_user = os.getenv("DB_USER")
+    db_password = os.getenv("DB_PASSWORD")
+    db_host = os.getenv("DB_HOST")
+    db_port = os.getenv("DB_PORT", "3306")
+    db_name = os.getenv("DB_NAME")
+
+    if db_user and db_password and db_host and db_name:
+        database_url = f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}?charset=utf8mb4"
+
 if database_url:
-    engine = create_engine(database_url)
+    engine = create_engine(database_url, pool_pre_ping=True)
 else:
     # 임시 SQLite 데이터베이스 설정
     SQLALCHEMY_DATABASE_URL = "sqlite:///./sql_app.db"
@@ -25,6 +36,7 @@ else:
     )
 
 meta = MetaData()
+Base = declarative_base()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
