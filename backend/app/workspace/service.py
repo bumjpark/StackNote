@@ -2,9 +2,9 @@
 
 from sqlalchemy.orm import Session
 
-from .model import WorkSpace,PageList
-from .schema import WorkspaceRequest
-
+from .model import WorkSpace,Page
+from .schema import WorkspaceRequest,PageListCreateRequest
+from .constants import DEFAULT_PAGES
 
 
 def create_workspace(
@@ -14,10 +14,14 @@ def create_workspace(
     """
     워크스페이스 생성
     """
+    print(f"DEBUG: create_workspace data: {workspace_data}")
+    print(f"DEBUG: work_space_name type: {type(workspace_data.work_space_name)}")
+
 
     workspace = WorkSpace(
         user_id=workspace_data.user_id,
         page_type=workspace_data.page_type,
+        work_space_name=workspace_data.work_space_name,
     )
 
     db.add(workspace)
@@ -52,6 +56,31 @@ def delete_workspace(
     db.refresh(workspace)
 
     return workspace
+
+def create_default_pages(
+    db: Session,
+    workspace_id: int,
+    user_id: int
+) -> list[int]:
+    """
+    워크스페이스 생성 시 기본 페이지 생성
+    """
+    created_page_ids: list[int] = []
+
+    for page in DEFAULT_PAGES:
+        new_page = Page(
+            workspace_id=workspace_id,
+            user_id=user_id,
+            page_name=page["page_name"],
+            page_type=page["page_type"],
+            is_deleted=False
+        )
+        db.add(new_page)
+        db.flush()  # id 생성
+        created_page_ids.append(new_page.id)
+
+    return created_page_ids
+
 
 def create_page_list(
     db: Session,
