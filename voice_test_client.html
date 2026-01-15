@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Voice Chat Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+        }
+
+        .box {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+
+        #log {
+            height: 300px;
+            overflow-y: scroll;
+            background: #f0f0f0;
+            border: 1px solid #999;
+            padding: 5px;
+        }
+
+        .status {
+            font-weight: bold;
+            color: blue;
+        }
+
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>🎤 StackNote Voice Test Client</h2>
+
+    <div class="box">
+        <label>Room ID: <input type="text" id="roomId" value="test-room"></label>
+        <label>User ID: <input type="text" id="userId" value="userA"></label>
+        <button onclick="connect()">🔌 Connect</button>
+        <button onclick="disconnect()" disabled id="btnDisconnect">❌ Disconnect</button>
+    </div>
+
+    <div class="box">
+        <button onclick="startCall()" disabled id="btnCall">📞 Call (Offer)</button>
+        <span id="status" class="status">Disconnected</span>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+        let ws;
+        let peerConnection;
+        let localStream;
+        const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+        const logDiv = document.getElementById("log");
+
+        // UI Elements
+        const roomIdInput = document.getElementById("roomId");
+        const userIdInput = document.getElementById("userId");
+        const btnCall = document.getElementById("btnCall");
+        const btnDisconnect = document.getElementById("btnDisconnect");
+        const statusSpan = document.getElementById("status");
+
+        function log(msg, type = "") {
+            const div = document.createElement("div");
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            if (type) div.className = type;
+            logDiv.appendChild(div);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        async function connect() {
+            const roomId = roomIdInput.value;
+            const userId = userIdInput.value;
+
+            ws = new WebSocket(`ws://localhost:8001/ws/${roomId}/${userId}`);
+
+            ws.onopen = () => {
+                log(`Connected to Signaling Server as ${userId}`, "status");
+                statusSpan.textContent = "Connected (Signaling)";
+                btnCall.disabled = false;
+                btnDisconnect.disabled = false;
+            };
+
+            ws.onmessage = async (event) => {
+                const data = JSON.parse(event.data);
+                handleSignalingData(data);
+            };
+
+            ws.onerror = (error) => {
+                console.error("WebSocket Error:", error);
+                log("❌ Connection Error! (Is the server running on port 8001?)", "error");
+            };
+
+            ws.onclose = () => {
+                log("Disconnected from server", "error");
+                resetUI();
+            };
+        }
+
+        function disconnect() {
+            if (ws) ws.close();
+            if (peerConnection) peerConnection.close();
+            resetUI();
+        }
+
+        function resetUI() {
+            statusSpan.textContent = "Disconnected";
+            btnCall.disabled = true;
+            btnDisconnect.disabled = true;
+        }
+
+        // ================= WebRTC Logic =================
+
+        async function setupPeerConnection() {
+            peerConnection = new RTCPeerConnection(config);
+
+            // ICE Candidate 발생 시 서버로 전송
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    sendSignal({
+                        type: "ice-candidate",
+                        target_user_id: getTargetUser(),
+                        candidate: event.candidate
+                    });
+                    log("Sent ICE Candidate");
+                }
+            };
+
+            // ICE Connection State Monitoring
+            peerConnection.oniceconnectionstatechange = () => {
+                log(`ICE State: ${peerConnection.iceConnectionState}`, "status");
+                if (peerConnection.iceConnectionState === 'connected') {
+                    statusSpan.textContent = "📞 Connected (P2P) - Talk now!";
+                }
+            };
+
+            // 상대방 오디오 수신 시
+            peerConnection.ontrack = (event) => {
+                log("Received remote audio track!", "status");
+                const audio = document.createElement("audio");
+                audio.srcObject = event.streams[0];
+                audio.autoplay = true;
+                audio.controls = true; // 컨트롤 표시
+                document.body.appendChild(audio);
+
+                audio.play().catch(e => {
+                    log(`Autoplay failed: ${e.message}. Click play manually!`, "error");
+                });
+            };
+
+            // 내 오디오 스트림 추가
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+                log("Microphone access granted (Local)", "status");
+            } catch (e) {
+                log(`Microphone error: ${e.message}`, "error");
+            }
+        }
+
+        async function startCall() {
+            await setupPeerConnection();
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            sendSignal({
+                type: "offer",
+                target_user_id: getTargetUser(),
+                sdp: peerConnection.localDescription.sdp
+            });
+            log("Sent Offer", "status");
+        }
+
+        async function handleSignalingData(data) {
+            log(`Received: ${data.type} from ${data.sender_user_id || "Server"}`);
+
+            if (data.type === "user_joined") {
+                log(`User ${data.user_id} joined! Ready to call.`);
+            }
+
+            if (data.type === "offer") {
+                log("Received Offer, creating Answer...");
+                await setupPeerConnection();
+
+                await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: data.sdp }));
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+
+                sendSignal({
+                    type: "answer",
+                    target_user_id: data.sender_user_id,
+                    sdp: answer.sdp
+                });
+                log("Sent Answer", "status");
+            }
+
+            if (data.type === "answer") {
+                log("Received Answer, setting remote description...");
+                await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp: data.sdp }));
+                statusSpan.textContent = "📞 Connected (P2P)";
+            }
+
+            if (data.type === "ice-candidate") {
+                if (peerConnection) {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                    log("Added remote ICE Candidate");
+                }
+            }
+        }
+
+        function sendSignal(msg) {
+            ws.send(JSON.stringify(msg));
+        }
+
+        // 테스트용: 상대방 ID 추론 (단순화: 내가 userA면 userB, 아니면 userA)
+        function getTargetUser() {
+            return userIdInput.value === "userA" ? "userB" : "userA";
+        }
+    </script>
+</body>
+
+</html>
