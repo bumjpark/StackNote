@@ -111,6 +111,7 @@ class ContentBlock(Base):
 
     id = Column(String(36), primary_key=True)  # UUID
     page_id = Column(String(50), ForeignKey("page_list.id"), nullable=False)
+    parent_id = Column(String(36), nullable=True) # Parent block ID
     
     # BlockNote specific fields
     type = Column(String(50), nullable=False) # paragraph, heading, etc.

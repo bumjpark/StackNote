@@ -104,9 +104,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
 
     const handleLogout = () => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user_id');
-        localStorage.removeItem('user_email');
+        sessionStorage.removeItem('token');
+        sessionStorage.removeItem('user_id');
+        sessionStorage.removeItem('user_email');
         navigate('/login');
     };
 
