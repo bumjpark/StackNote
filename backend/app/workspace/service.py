@@ -6,13 +6,11 @@ import uuid
 
 from .model import WorkSpace, Page, VoiceChannel
 from .schema import WorkspaceRequest, BlockCreate, BlockUpdate, PageListCreateRequest, VoiceChannelCreateQuery
-=======
 
 from .model import WorkSpace,Page
 from .schema import WorkspaceRequest,PageListCreateRequest
 from .constants import DEFAULT_PAGES
 
->>>>>>> origin/dev
 def create_workspace(
     db: Session,
     workspace_data: WorkspaceRequest
@@ -27,7 +25,6 @@ def create_workspace(
     )
     db.add(workspace)
     db.commit()
-    db.refresh(workspace)
     db.refresh(workspace)
     return workspace
 
@@ -56,13 +53,22 @@ def get_workspaces_by_user(db: Session, user_id: int):
         }
         
         for p in pages:
+            # Determine page type based on p.page_type
+            # Default to workspace type if p.page_type is missing (backward compatibility)
+            current_type = p.page_type if p.page_type else ws.page_type
+            
+            # Normalize type string (handle "PRIVATE", "private", "TEAM", "team")
+            is_team = current_type in ["TEAM", "team"]
+            final_type = "team" if is_team else "private"
+
             page_data = {
                 "id": str(p.id),
                 "title": p.page_name,
                 "content": "", # 목록 조회시엔 컨텐츠 제외 (가벼운 응답)
-                "type": "private" if ws.page_type == "private" else "team"
+                "type": final_type
             }
-            if ws.page_type == "private":
+            
+            if final_type == "private":
                 ws_data["privatePages"].append(page_data)
             else:
                 ws_data["teamPages"].append(page_data)
@@ -124,16 +130,29 @@ def create_default_pages(
     created_page_ids: list[str] = []
 
     for page in DEFAULT_PAGES:
-        new_page = Page(
-            workspace_id=workspace_id,
-            user_id=user_id,
-            page_name=page["page_name"],
-            page_type=page["page_type"],
-            is_deleted=False
-        )
-        db.add(new_page)
-        db.flush()  # id 생성
-        created_page_ids.append(new_page.id)
+        if page["page_type"] == "VOICE":
+            # Create Voice Channel
+            new_channel = VoiceChannel(
+                workspace_id=workspace_id,
+                name=page["page_name"],
+                is_deleted=False
+            )
+            db.add(new_channel)
+            db.flush()
+        else:
+            # Create Page
+            new_page = Page(
+                workspace_id=workspace_id,
+                user_id=user_id,
+                page_name=page["page_name"],
+                page_type=page["page_type"],
+                is_deleted=False
+            )
+            db.add(new_page)
+            db.flush()  # id 생성
+            created_page_ids.append(new_page.id)
+    
+    db.commit()
 
     return created_page_ids
 

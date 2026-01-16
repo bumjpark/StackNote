@@ -36,6 +36,7 @@ interface WorkspaceContextType {
     selectChannel: (channelId: string) => void;
     updatePageContent: (pageId: string, content: string) => void;
     updatePageTitle: (pageId: string, title: string) => void;
+    refreshWorkspaces: () => Promise<void>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -54,33 +55,38 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
     const [currentPageId, setCurrentPageId] = useState<string>('');
     const [currentChannelId, setCurrentChannelId] = useState<string | null>(null);
 
-    // Fetch initial data
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                // Hardcoded user_id=1 as per current auth mock
-                const response = await api.get('/workspace/user/1');
-                const fetchedWorkspaces = response.data;
-                setWorkspaces(fetchedWorkspaces);
+    const refreshWorkspaces = async () => {
+        try {
+            const userId = localStorage.getItem('user_id');
+            if (!userId) {
+                setWorkspaces([]);
+                return;
+            }
 
-                if (fetchedWorkspaces.length > 0) {
-                    // If no workspace selected yet, or current one invalid, select first
-                    if (!currentWorkspaceId || !fetchedWorkspaces.find((w: Workspace) => w.id === currentWorkspaceId)) {
-                        const firstWs = fetchedWorkspaces[0];
-                        setCurrentWorkspaceId(firstWs.id);
-                        if (firstWs.privatePages.length > 0) {
-                            setCurrentPageId(firstWs.privatePages[0].id);
-                        } else if (firstWs.teamPages.length > 0) {
-                            setCurrentPageId(firstWs.teamPages[0].id);
-                        }
+            const response = await api.get(`/workspace/user/${userId}`);
+            const fetchedWorkspaces = response.data;
+            setWorkspaces(fetchedWorkspaces);
+
+            if (fetchedWorkspaces.length > 0) {
+                // If no workspace selected yet, or current one invalid, select first
+                if (!currentWorkspaceId || !fetchedWorkspaces.find((w: Workspace) => w.id === currentWorkspaceId)) {
+                    const firstWs = fetchedWorkspaces[0];
+                    setCurrentWorkspaceId(firstWs.id);
+                    if (firstWs.privatePages.length > 0) {
+                        setCurrentPageId(firstWs.privatePages[0].id);
+                    } else if (firstWs.teamPages.length > 0) {
+                        setCurrentPageId(firstWs.teamPages[0].id);
                     }
                 }
-            } catch (error) {
-                console.error("Failed to fetch workspaces:", error);
             }
-        };
+        } catch (error) {
+            console.error("Failed to fetch workspaces:", error);
+        }
+    };
 
-        fetchData();
+    // Fetch initial data
+    useEffect(() => {
+        refreshWorkspaces();
     }, []);
 
 
@@ -243,7 +249,8 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             selectPage,
             selectChannel,
             updatePageContent,
-            updatePageTitle
+            updatePageTitle,
+            refreshWorkspaces
         }}>
             {children}
         </WorkspaceContext.Provider>

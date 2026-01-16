@@ -3,6 +3,8 @@ from .schema import UserPostRequest
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from datetime import datetime
+from app.workspace import service as WorkspaceService
+from app.workspace.schema import WorkspaceRequest
 
 def create_user (new_user: UserPostRequest, db: Session):
     user = User(
@@ -12,6 +14,22 @@ def create_user (new_user: UserPostRequest, db: Session):
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    # 기본 워크스페이스 생성
+    workspace_req = WorkspaceRequest(
+        user_id=user.id,
+        page_type="private", # Default type, logic handles classification
+        work_space_name="My Workspace"
+    )
+    
+    workspace = WorkspaceService.create_workspace(db, workspace_req)
+    
+    # 기본 페이지 생성
+    WorkspaceService.create_default_pages(
+        db=db,
+        workspace_id=workspace.id,
+        user_id=user.id
+    )
 
     return user
 

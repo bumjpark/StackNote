@@ -3,9 +3,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { authApi } from '../../api/auth';
 import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
+import { useWorkspace } from '../../context/WorkspaceContext';
 
 const Login: React.FC = () => {
     const navigate = useNavigate();
+    const { refreshWorkspaces } = useWorkspace();
     const [formData, setFormData] = useState({
         email_id: '',
         pw: ''
@@ -37,6 +39,10 @@ const Login: React.FC = () => {
                 localStorage.setItem('user_id', String(response.user_id));
                 localStorage.setItem('user_email', formData.email_id); // Store email for display
                 localStorage.setItem('token', 'dummy-token-since-backend-no-jwt');
+
+                // Refresh workspaces before navigating
+                await refreshWorkspaces();
+
                 navigate('/workspace');
             }
         } catch (err: any) {
