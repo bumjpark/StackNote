@@ -41,8 +41,13 @@ const Login: React.FC = () => {
                 localStorage.setItem('user_email', formData.email_id); // Store email for display
                 localStorage.setItem('token', 'dummy-token-since-backend-no-jwt');
 
-                // Refresh workspaces before navigating
-                await refreshWorkspaces();
+                // Refresh workspaces before navigating (non-blocking)
+                try {
+                    await refreshWorkspaces();
+                } catch (refreshError) {
+                    console.error('Failed to refresh workspaces:', refreshError);
+                    // Continue anyway - workspace will load on mount
+                }
 
                 navigate('/workspace');
             }
