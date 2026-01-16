@@ -1,5 +1,10 @@
 # Python
 __pycache__/
+backend/app/__pycache__/
+backend/app/auth/__pycache__/
+backend/app/core/__pycache__/
+backend/app/workspace/__pycache__/
+*.pyc
 *.py[cod]
 *$py.class
 *.so

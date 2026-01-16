@@ -33,13 +33,13 @@ const VoiceManager: React.FC = () => {
     const audioContext = useRef<AudioContext | null>(null);
     const analysers = useRef<Record<string, AnalyserNode>>({}); // userId -> analyser (local is 'me')
     const gainNodes = useRef<Record<string, GainNode>>({}); // userId -> gain (volume/mute control)
-    const animationRef = useRef<number>();
+    const animationRef = useRef<number | null>(null);
 
-    const myUserId = useRef<string>(localStorage.getItem('user_id') || `user-${Math.floor(Math.random() * 1000)}`).current;
+    const myUserId = useRef<string>(sessionStorage.getItem('user_id') || `user-${Math.floor(Math.random() * 1000)}`).current;
 
     // Attempt to get email, fallback to ID based name
     const myUsername = useRef<string>(
-        localStorage.getItem('user_email') || `User ${myUserId.substring(0, 4)}`
+        sessionStorage.getItem('user_email') || `User ${myUserId.substring(0, 4)}`
     ).current;
 
     useEffect(() => {

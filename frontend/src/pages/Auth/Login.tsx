@@ -36,6 +36,7 @@ const Login: React.FC = () => {
                 // We'll store a dummy token or the user_id as token for now to make requests work if they need auth
                 // But the backend `get_db` doesn't check token. It just needs DB.
                 // Protected routes might need user_id.
+
                 localStorage.setItem('user_id', String(response.user_id));
                 localStorage.setItem('user_email', formData.email_id); // Store email for display
                 localStorage.setItem('token', 'dummy-token-since-backend-no-jwt');
