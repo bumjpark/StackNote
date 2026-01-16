@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from typing import List
-from app.models import ContentBlock as Block
+from app.workspace.model import ContentBlock as Block
 from app.schemas.block import BlockCreate, BlockUpdate
 
 def get_blocks_by_page(db: Session, page_id: str):

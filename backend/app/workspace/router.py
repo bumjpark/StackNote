@@ -1,11 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
-from typing import List
-import string
-import secrets
+
 
 from app.core.database import get_db
-from .model import WorkSpace, Page
+from app.workspace.model import WorkSpace, Page
 from .schema import (
     WorkspaceRequest,
     WorkspaceResponse,

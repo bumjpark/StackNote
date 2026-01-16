@@ -1,5 +1,4 @@
 from app.core.database import engine, Base
-from app import models
 
 def reset_db():
     print("Dropping all tables...")

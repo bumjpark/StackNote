@@ -21,6 +21,7 @@ origins = [
     "http://localhost:5173", # Vite default port
     "http://127.0.0.1:5173",
     "http://localhost:3000",
+    "http://localhost:8000",
     "*" # 개발 편의를 위해 모든 출처 허용 (배포 시 수정 필요)
 ]
 
