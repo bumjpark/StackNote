@@ -1,9 +1,10 @@
 import React from 'react';
 import MainLayout from '../../layout/MainLayout';
 import { useWorkspace } from '../../context/WorkspaceContext';
+import BlockEditor from '../../components/BlockEditor';
 
 const WorkspaceView: React.FC = () => {
-    const { currentPage, updatePageTitle, updatePageContent } = useWorkspace();
+    const { currentPage, updatePageTitle } = useWorkspace();
 
     if (!currentPage) {
         return (
@@ -45,24 +46,9 @@ const WorkspaceView: React.FC = () => {
                     }}
                 />
 
-                {/* Simple Block Editor Placeholder */}
-                <div style={{ minHeight: '300px' }}>
-                    <textarea
-                        value={currentPage.content}
-                        onChange={(e) => updatePageContent(currentPage.id, e.target.value)}
-                        placeholder="Type '/' for commands..."
-                        style={{
-                            width: '100%',
-                            height: 'calc(100vh - 400px)',
-                            background: 'transparent',
-                            border: 'none',
-                            resize: 'none',
-                            outline: 'none',
-                            fontSize: '1rem',
-                            color: 'var(--text-primary)',
-                            lineHeight: '1.6'
-                        }}
-                    />
+                {/* Block Editor */}
+                <div style={{ minHeight: '300px', width: '100%' }}>
+                    <BlockEditor key={currentPage.id} pageId={currentPage.id} />
                 </div>
             </div>
         </MainLayout>

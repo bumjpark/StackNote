@@ -53,8 +53,18 @@ class PageListCreateRequest(BaseModel):
 
 class PageListUserResponse(BaseModel):
     work_space_id: int
-    page_list_id: list[int]
+    page_list_id: list[str]
 
 class PageListCreateResponse(BaseModel):
     status: str
     user: Optional[PageListUserResponse] = None
+
+class VoiceChannelCreateQuery(BaseModel):
+    user_id: int
+    work_space_id: int
+    channel_name: str
+
+class VoiceChannelCreateResponse(BaseModel):
+    status: str
+    channel_id: str
+    channel_name: str

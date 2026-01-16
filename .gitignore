@@ -50,3 +50,6 @@ docker-compose.override.yml
 
 # Logs
 *.log
+
+# Documentation
+DOCKER.md

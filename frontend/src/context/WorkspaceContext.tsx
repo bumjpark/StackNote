@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import api from '../api/client';
 
 // Types
 export interface Page {
@@ -47,36 +48,41 @@ export const useWorkspace = () => {
     return context;
 };
 
-// Initial Mock Data
-const INITIAL_WORKSPACES: Workspace[] = [
-    {
-        id: '1',
-        name: 'My Private Notes',
-        privatePages: [
-            { id: '101', title: 'Getting Started', content: 'Welcome to StackNote! This is a simple block editor.', type: 'private' },
-            { id: '102', title: 'Ideas', content: 'Type something here...', type: 'private' }
-        ],
-        teamPages: [],
-        voiceChannels: [
-            { id: 'v1', name: 'General', users: [] }
-        ]
-    }
-];
-
 export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    // Load from local storage or use initial
-    const [workspaces, setWorkspaces] = useState<Workspace[]>(() => {
-        const saved = localStorage.getItem('stacknote_workspaces_v2'); // v2 for new structure
-        return saved ? JSON.parse(saved) : INITIAL_WORKSPACES;
-    });
-
-    const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string>(workspaces[0]?.id || '');
-    const [currentPageId, setCurrentPageId] = useState<string>(workspaces[0]?.privatePages[0]?.id || '');
+    const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+    const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string>('');
+    const [currentPageId, setCurrentPageId] = useState<string>('');
     const [currentChannelId, setCurrentChannelId] = useState<string | null>(null);
 
+    // Fetch initial data
     useEffect(() => {
-        localStorage.setItem('stacknote_workspaces_v2', JSON.stringify(workspaces));
-    }, [workspaces]);
+        const fetchData = async () => {
+            try {
+                // Hardcoded user_id=1 as per current auth mock
+                const response = await api.get('/workspace/user/1');
+                const fetchedWorkspaces = response.data;
+                setWorkspaces(fetchedWorkspaces);
+
+                if (fetchedWorkspaces.length > 0) {
+                    // If no workspace selected yet, or current one invalid, select first
+                    if (!currentWorkspaceId || !fetchedWorkspaces.find((w: Workspace) => w.id === currentWorkspaceId)) {
+                        const firstWs = fetchedWorkspaces[0];
+                        setCurrentWorkspaceId(firstWs.id);
+                        if (firstWs.privatePages.length > 0) {
+                            setCurrentPageId(firstWs.privatePages[0].id);
+                        } else if (firstWs.teamPages.length > 0) {
+                            setCurrentPageId(firstWs.teamPages[0].id);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("Failed to fetch workspaces:", error);
+            }
+        };
+
+        fetchData();
+    }, []);
+
 
     const currentWorkspace = workspaces.find(w => w.id === currentWorkspaceId) || null;
 
@@ -89,53 +95,96 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
     const currentPage = findPage(currentPageId, currentWorkspace);
     const currentChannel = currentWorkspace?.voiceChannels.find(c => c.id === currentChannelId) || null;
 
-    const createWorkspace = (name: string) => {
-        const newWorkspace: Workspace = {
-            id: Date.now().toString(),
-            name,
-            privatePages: [{ id: Date.now().toString() + '1', title: 'Untitled', content: '', type: 'private' }],
-            teamPages: [],
-            voiceChannels: [{ id: Date.now().toString() + 'v', name: 'General', users: [] }]
-        };
-        setWorkspaces([...workspaces, newWorkspace]);
-        setCurrentWorkspaceId(newWorkspace.id);
-        setCurrentPageId(newWorkspace.privatePages[0].id);
+    const createWorkspace = async (name: string) => {
+        try {
+            const response = await api.post('/workspace', {
+                user_id: 1, // Mock user ID
+                work_space_name: name,
+                page_type: 'private' // Defaulting
+            });
+            // Refetch to get consistent ID and state
+            // Or construct manually if response contains enough info
+            const newWsData = response.data.user;
+            const newWorkspace: Workspace = {
+                id: String(newWsData.work_space_id),
+                name: newWsData.work_space_name,
+                privatePages: [],
+                teamPages: [],
+                voiceChannels: []
+            };
+
+            setWorkspaces([...workspaces, newWorkspace]);
+            setCurrentWorkspaceId(newWorkspace.id);
+            // new workspace has no pages yet
+        } catch (error) {
+            console.error("Failed to create workspace:", error);
+        }
     };
 
-    const createPage = (workspaceId: string, title: string, type: 'private' | 'team') => {
-        setWorkspaces(prev => prev.map(w => {
-            if (w.id === workspaceId) {
-                const newPage: Page = { id: Date.now().toString(), title, content: '', type };
-                setCurrentPageId(newPage.id);
-                if (type === 'private') {
-                    return { ...w, privatePages: [...w.privatePages, newPage] };
-                } else {
-                    return { ...w, teamPages: [...w.teamPages, newPage] };
+    const createPage = async (workspaceId: string, title: string, type: 'private' | 'team') => {
+        try {
+            const response = await api.post('/workspace/page_list', {
+                user_id: 1,
+                work_space_id: parseInt(workspaceId),
+                page_type: type,
+                page_list: [title]
+            });
+
+            // Response format: { status: "success", user: { work_space_id: 1, page_list_id: [123] } }
+            const newPageId = String(response.data.user.page_list_id[0]);
+
+            setWorkspaces(prev => prev.map(w => {
+                if (w.id === workspaceId) {
+                    const newPage: Page = { id: newPageId, title, content: '', type };
+                    setCurrentPageId(newPageId);
+                    if (type === 'private') {
+                        return { ...w, privatePages: [...w.privatePages, newPage] };
+                    } else {
+                        return { ...w, teamPages: [...w.teamPages, newPage] };
+                    }
                 }
-            }
-            return w;
-        }));
+                return w;
+            }));
+
+        } catch (error) {
+            console.error("Failed to create page:", error);
+        }
     };
 
-    const createChannel = (workspaceId: string, name: string) => {
-        setWorkspaces(prev => prev.map(w => {
-            if (w.id === workspaceId) {
-                const newChannel: VoiceChannel = { id: Date.now().toString(), name, users: [] };
-                return { ...w, voiceChannels: [...w.voiceChannels, newChannel] };
-            }
-            return w;
-        }));
+    const createChannel = async (workspaceId: string, name: string) => {
+        try {
+            const response = await api.post('/workspace/voice_channel', {
+                user_id: 1, // Mock user ID
+                work_space_id: parseInt(workspaceId),
+                channel_name: name
+            });
+
+            // Response: { status: "success", channel_id: "uuid", channel_name: "name" }
+            const { channel_id, channel_name } = response.data;
+
+            setWorkspaces(prev => prev.map(w => {
+                if (w.id === workspaceId) {
+                    const newChannel: VoiceChannel = { id: channel_id, name: channel_name, users: [] };
+                    return { ...w, voiceChannels: [...w.voiceChannels, newChannel] };
+                }
+                return w;
+            }));
+        } catch (error) {
+            console.error("Failed to create voice channel:", error);
+        }
     };
 
     const selectWorkspace = (workspaceId: string) => {
         setCurrentWorkspaceId(workspaceId);
         const ws = workspaces.find(w => w.id === workspaceId);
-        if (ws && ws.privatePages.length > 0) {
-            setCurrentPageId(ws.privatePages[0].id);
-        } else if (ws && ws.teamPages.length > 0) {
-            setCurrentPageId(ws.teamPages[0].id);
-        } else {
-            setCurrentPageId('');
+        if (ws) {
+            if (ws.privatePages.length > 0) {
+                setCurrentPageId(ws.privatePages[0].id);
+            } else if (ws.teamPages.length > 0) {
+                setCurrentPageId(ws.teamPages[0].id);
+            } else {
+                setCurrentPageId('');
+            }
         }
     };
 
@@ -148,6 +197,10 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
     };
 
     const updatePageContent = (pageId: string, content: string) => {
+        // Content update is handled mainly by BlockEditor saving blocks.
+        // This context update might be for local UI optimistic updates if needed, 
+        // but for now we trust the editor component to persist.
+        // We can keep this state update for UI consistency if content preview is needed.
         setWorkspaces(prev => prev.map(ws => {
             if (ws.id === currentWorkspaceId) {
                 const updateList = (list: Page[]) => list.map(p => p.id === pageId ? { ...p, content } : p);
@@ -161,7 +214,9 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
         }));
     };
 
-    const updatePageTitle = (pageId: string, title: string) => {
+    const updatePageTitle = async (pageId: string, title: string) => {
+        // TODO: Add backend API update if needed?
+        // For now local update
         setWorkspaces(prev => prev.map(ws => {
             if (ws.id === currentWorkspaceId) {
                 const updateList = (list: Page[]) => list.map(p => p.id === pageId ? { ...p, title } : p);

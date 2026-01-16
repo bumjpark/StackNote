@@ -2,8 +2,8 @@
 
 from sqlalchemy.orm import Session
 
-from backend.models.user import WorkSpace
-from backend.schemas.work_space import work_space_request
+from app.workspace.model import WorkSpace
+from app.schemas.work_space import work_space_request
 
 
 def create_workspace(

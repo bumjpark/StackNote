@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import VoiceManager from '../features/VoiceChat/VoiceManager';
 import { useWorkspace } from '../context/WorkspaceContext';
@@ -9,12 +9,82 @@ import {
     Mic,
     Lock,
     LogOut,
-    Check
+    Check,
+    User
 } from 'lucide-react';
 
 interface MainLayoutProps {
     children: React.ReactNode;
 }
+
+interface VoiceChannelItemProps {
+    channel: { id: string; name: string };
+    isActive: boolean;
+    onSelect: () => void;
+}
+
+const VoiceChannelItem: React.FC<VoiceChannelItemProps> = ({ channel, isActive, onSelect }) => {
+    const [activeUsers, setActiveUsers] = useState<Array<{ user_id: string, username: string }>>([]);
+
+    useEffect(() => {
+        const fetchActiveUsers = async () => {
+            try {
+                const response = await fetch('http://localhost:8001/active_users');
+                const data = await response.json();
+                setActiveUsers(data[channel.id] || []);
+            } catch (err) {
+                console.error('Failed to fetch active users:', err);
+            }
+        };
+
+        fetchActiveUsers();
+        const interval = setInterval(fetchActiveUsers, 3000); // Poll every 3 seconds
+        return () => clearInterval(interval);
+    }, [channel.id]);
+
+    return (
+        <div>
+            {/* Channel Name */}
+            <div
+                onClick={onSelect}
+                style={{
+                    padding: '0.4rem 0.75rem',
+                    fontSize: '0.9rem',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                    background: isActive ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+                    color: isActive ? '#10b981' : 'var(--text-secondary)'
+                }}
+                className="hover:bg-white/5"
+            >
+                <Mic size={14} />
+                <span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{channel.name}</span>
+            </div>
+
+            {/* Active Users */}
+            {activeUsers.length > 0 && (
+                <div style={{ paddingLeft: '2rem', marginTop: '0.25rem' }}>
+                    {activeUsers.map(user => (
+                        <div
+                            key={user.user_id}
+                            style={{
+                                padding: '0.25rem 0.5rem',
+                                fontSize: '0.85rem',
+                                color: 'var(--text-secondary)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
+                            }}
+                        >
+                            <User size={12} />
+                            <span>{user.username}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const navigate = useNavigate();
@@ -33,12 +103,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
     const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
 
-    // Note: I can implement collapsible state if requested, but for now I'll keep them open.
-    // const [collapsed, setCollapsed] = useState({ private: false, team: false, voice: false }); 
-
     const handleLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user_id');
+        localStorage.removeItem('user_email');
         navigate('/login');
     };
 
@@ -205,22 +273,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                             }} />
                         </div>
                         {currentWorkspace?.voiceChannels.map(channel => (
-                            <div
+                            <VoiceChannelItem
                                 key={channel.id}
-                                onClick={() => selectChannel(channel.id)}
-                                style={{
-                                    padding: '0.4rem 0.75rem',
-                                    fontSize: '0.9rem',
-                                    cursor: 'pointer',
-                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                                    background: channel.id === currentChannel?.id ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
-                                    color: channel.id === currentChannel?.id ? '#10b981' : 'var(--text-secondary)'
-                                }}
-                                className="hover:bg-white/5"
-                            >
-                                <Mic size={14} />
-                                <span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{channel.name}</span>
-                            </div>
+                                channel={channel}
+                                isActive={channel.id === currentChannel?.id}
+                                onSelect={() => selectChannel(channel.id)}
+                            />
                         ))}
                     </div>
 
@@ -243,7 +301,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                 {children}
 
                 {/* Voice Manager (Connected to State) */}
-                {/* We can pass props or let it access context internally. It accesses internal state for now. */}
                 <VoiceManager />
             </main>
         </div>

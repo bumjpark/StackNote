@@ -4,11 +4,16 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 import uuid
 
+<<<<<<< HEAD
+from .model import WorkSpace, Page, VoiceChannel
+from .schema import WorkspaceRequest, BlockCreate, BlockUpdate, PageListCreateRequest, VoiceChannelCreateQuery
+=======
 
 from .model import WorkSpace,Page
 from .schema import WorkspaceRequest,PageListCreateRequest
 from .constants import DEFAULT_PAGES
 
+>>>>>>> origin/dev
 def create_workspace(
     db: Session,
     workspace_data: WorkspaceRequest
@@ -24,7 +29,63 @@ def create_workspace(
     db.add(workspace)
     db.commit()
     db.refresh(workspace)
+    db.refresh(workspace)
     return workspace
+
+def get_workspaces_by_user(db: Session, user_id: int):
+    """
+    유저의 모든 워크스페이스 조회 (페이지 포함)
+    """
+    workspaces = db.query(WorkSpace).filter(WorkSpace.user_id == user_id, WorkSpace.is_deleted == False).all()
+    results = []
+    for ws in workspaces:
+         # 해당 워크스페이스의 페이지 조회
+        pages = db.query(Page).filter(
+            Page.workspace_id == ws.id,
+            Page.is_deleted == False
+        ).all()
+        
+        # 페이지 분류 (private/team) - 현재 모델엔 구분 컬럼이 없어서 workspace type을 따르거나 별도 로직 필요
+        # 임시로 워크스페이스 타입에 따라 전체 페이지를 넣음
+        
+        ws_data = {
+            "id": str(ws.id),
+            "name": ws.work_space_name,
+            "privatePages": [],
+            "teamPages": [],
+            "voiceChannels": [] # Voice channels 구현 시 추가
+        }
+        
+        for p in pages:
+            page_data = {
+                "id": str(p.id),
+                "title": p.page_name,
+                "content": "", # 목록 조회시엔 컨텐츠 제외 (가벼운 응답)
+                "type": "private" if ws.page_type == "private" else "team"
+            }
+            if ws.page_type == "private":
+                ws_data["privatePages"].append(page_data)
+            else:
+                ws_data["teamPages"].append(page_data)
+                
+        # Fetch Voice Channels
+        voice_channels = db.query(VoiceChannel).filter(
+            VoiceChannel.workspace_id == ws.id,
+            VoiceChannel.is_deleted == False
+        ).all()
+        
+        ws_data["voiceChannels"] = [
+            {
+                "id": vc.id,
+                "name": vc.name,
+                "users": [] # Realtime user status is handled via WebSocket/Redis usually, defaulting to empty
+            }
+            for vc in voice_channels
+        ]
+
+        results.append(ws_data)
+        
+    return results
 
 
 def delete_workspace(
@@ -57,11 +118,11 @@ def create_default_pages(
     db: Session,
     workspace_id: int,
     user_id: int
-) -> list[int]:
+) -> list[str]:
     """
     워크스페이스 생성 시 기본 페이지 생성
     """
-    created_page_ids: list[int] = []
+    created_page_ids: list[str] = []
 
     for page in DEFAULT_PAGES:
         new_page = Page(
@@ -80,78 +141,78 @@ def create_default_pages(
 # =========================
 # Block CRUD & Logic
 # =========================
-def get_blocks(db: Session, page_id: str):
-    """
-    페이지 내 모든 블록을 순서대로 조회
-    """
-    return db.query(Block).filter(
-        Block.page_id == page_id,
-        Block.is_deleted == False
-    ).order_by(Block.order.asc()).all()
+# def get_blocks(db: Session, page_id: str):
+#     """
+#     페이지 내 모든 블록을 순서대로 조회
+#     """
+#     return db.query(Block).filter(
+#         Block.page_id == page_id,
+#         Block.is_deleted == False
+#     ).order_by(Block.order.asc()).all()
 
-def create_block(db: Session, block_data: BlockCreate):
-    """
-    새 블록 생성
-    """
-    new_block_id = str(uuid.uuid4())
-    block = Block(
-        id=new_block_id,
-        page_id=block_data.page_id,
-        workspace_id=block_data.workspace_id,
-        user_id=block_data.user_id,
-        block_type=block_data.block_type,
-        content=block_data.content,
-        order=block_data.order,
-        parent_id=block_data.parent_id
-    )
-    db.add(block)
-    db.commit()
-    db.refresh(block)
-    return block
+# def create_block(db: Session, block_data: BlockCreate):
+#     """
+#     새 블록 생성
+#     """
+#     new_block_id = str(uuid.uuid4())
+#     block = Block(
+#         id=new_block_id,
+#         page_id=block_data.page_id,
+#         workspace_id=block_data.workspace_id,
+#         user_id=block_data.user_id,
+#         block_type=block_data.block_type,
+#         content=block_data.content,
+#         order=block_data.order,
+#         parent_id=block_data.parent_id
+#     )
+#     db.add(block)
+#     db.commit()
+#     db.refresh(block)
+#     return block
 
-def update_block(db: Session, block_id: str, updates: BlockUpdate):
-    """
-    블록 수정
-    """
-    block = db.query(Block).filter(Block.id == block_id).first()
-    if not block:
-        return None
+# def update_block(db: Session, block_id: str, updates: BlockUpdate):
+#     """
+#     블록 수정
+#     """
+#     block = db.query(Block).filter(Block.id == block_id).first()
+#     if not block:
+#         return None
     
-    update_data = updates.dict(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(block, key, value)
+#     update_data = updates.dict(exclude_unset=True)
+#     for key, value in update_data.items():
+#         setattr(block, key, value)
     
-    db.commit()
-    db.refresh(block)
-    return block
+#     db.commit()
+#     db.refresh(block)
+#     return block
 
-def delete_block(db: Session, block_id: str):
-    """
-    블록 삭제 (Soft Delete)
-    """
-    block = db.query(Block).filter(Block.id == block_id).first()
-    if not block:
-        return None
+# def delete_block(db: Session, block_id: str):
+#     """
+#     블록 삭제 (Soft Delete)
+#     """
+#     block = db.query(Block).filter(Block.id == block_id).first()
+#     if not block:
+#         return None
     
-    block.is_deleted = True
-    db.commit()
-    return block
+#     block.is_deleted = True
+#     db.commit()
+#     return block
 
-def move_block(db: Session, block_id: str, target_order: float):
-    """
-    블록 순서 이동
-    """
-    return update_block(db, block_id, BlockUpdate(order=target_order))
+# def move_block(db: Session, block_id: str, target_order: float):
+#     """
+#     블록 순서 이동
+#     """
+#     return update_block(db, block_id, BlockUpdate(order=target_order))
 
 def create_page_list(
     db: Session,
     page_list_data: PageListCreateRequest
-) -> list[int]:
+) -> list[str]:
     """
     페이지 리스트 생성 (여러 페이지 한번에)
     """
 
-    created_page_ids: list[int] = []
+    created_page_ids: list[str] = []
 
     for page_name in page_list_data.page_list:
         page = Page(
@@ -199,3 +260,21 @@ def delete_page_list(
     return len(pages)
 
 
+    return len(pages)
+
+def create_voice_channel(
+    db: Session,
+    query: VoiceChannelCreateQuery
+) -> VoiceChannel:
+    """
+    보이스 채널 생성
+    """
+    channel = VoiceChannel(
+        workspace_id=query.work_space_id,
+        name=query.channel_name,
+        is_deleted=False
+    )
+    db.add(channel)
+    db.commit()
+    db.refresh(channel)
+    return channel

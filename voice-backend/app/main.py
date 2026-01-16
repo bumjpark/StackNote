@@ -30,11 +30,15 @@ class ConnectionManager:
     def __init__(self):
         # 방 ID -> { 유저 ID: WebSocket }
         self.rooms: Dict[str, Dict[str, WebSocket]] = {}
+        # 방 ID -> { 유저 ID: username }
+        self.usernames: Dict[str, Dict[str, str]] = {}
 
     async def connect(self, websocket: WebSocket, room_id: str, user_id: str):
         await websocket.accept()
         if room_id not in self.rooms:
             self.rooms[room_id] = {}
+        if room_id not in self.usernames:
+            self.usernames[room_id] = {}
         
         self.rooms[room_id][user_id] = websocket
         logger.info(f"User {user_id} connected to Room {room_id}")
@@ -56,9 +60,15 @@ class ConnectionManager:
                 del self.rooms[room_id][user_id]
                 logger.info(f"User {user_id} disconnected from Room {room_id}")
             
+            # username도 삭제
+            if room_id in self.usernames and user_id in self.usernames[room_id]:
+                del self.usernames[room_id][user_id]
+            
             # 방이 비었으면 삭제
             if not self.rooms[room_id]:
                 del self.rooms[room_id]
+            if room_id in self.usernames and not self.usernames[room_id]:
+                del self.usernames[room_id]
 
     async def broadcast_to_room(self, message: dict, room_id: str, exclude_user: str = None):
         """방에 있는 모든(또는 특정 유저 제외) 유저에게 메시지 전송"""
@@ -85,6 +95,20 @@ manager = ConnectionManager()
 def health_check():
     return {"status": "ok", "service": "voice-backend-signaling"}
 
+@app.get("/active_users")
+def get_active_users():
+    """Return active users in each voice channel with usernames"""
+    result = {}
+    for room_id, users in manager.rooms.items():
+        result[room_id] = [
+            {
+                "user_id": user_id,
+                "username": manager.usernames.get(room_id, {}).get(user_id, user_id)
+            }
+            for user_id in users.keys()
+        ]
+    return result
+
 @app.websocket("/ws/{room_id}/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
     await manager.connect(websocket, room_id, user_id)
@@ -93,6 +117,14 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
             # 클라이언트로부터 시그널링 데이터 수신 (Offer, Answer, ICE Candidate)
             data = await websocket.receive_json()
             logger.info(f"Received signal from {user_id} in {room_id}: {data.get('type')}")
+            
+            # Handle identify message to store username
+            if data.get("type") == "identify":
+                username = data.get("username", user_id)
+                if room_id not in manager.usernames:
+                    manager.usernames[room_id] = {}
+                manager.usernames[room_id][user_id] = username
+                logger.info(f"User {user_id} identified as {username} in room {room_id}")
             
             target_user = data.get("target_user_id")
             
