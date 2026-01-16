@@ -162,7 +162,7 @@ def create_page_list(
 
 @router.delete("/page_list/{page_id}", response_model=PageListCreateResponse)
 def delete_page_exact(
-    page_id: int,
+    page_id: str,
     db: Session = Depends(get_db)
 ):
     page = db.query(Page).filter(

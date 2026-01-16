@@ -36,6 +36,7 @@ interface WorkspaceContextType {
     selectChannel: (channelId: string) => void;
     updatePageContent: (pageId: string, content: string) => void;
     updatePageTitle: (pageId: string, title: string) => void;
+    deletePage: (pageId: string) => Promise<void>;
     refreshWorkspaces: () => Promise<void>;
 }
 
@@ -220,6 +221,39 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
         }));
     };
 
+    const deletePage = async (pageId: string) => {
+        try {
+            await api.delete(`/workspace/page_list/${pageId}`);
+
+            // Remove page from local state
+            setWorkspaces(prev => prev.map(ws => {
+                if (ws.id === currentWorkspaceId) {
+                    return {
+                        ...ws,
+                        privatePages: ws.privatePages.filter(p => p.id !== pageId),
+                        teamPages: ws.teamPages.filter(p => p.id !== pageId)
+                    };
+                }
+                return ws;
+            }));
+
+            // If deleted page was current, select another page
+            if (currentPageId === pageId) {
+                const ws = workspaces.find(w => w.id === currentWorkspaceId);
+                if (ws) {
+                    const remainingPages = [...ws.privatePages, ...ws.teamPages].filter(p => p.id !== pageId);
+                    if (remainingPages.length > 0) {
+                        setCurrentPageId(remainingPages[0].id);
+                    } else {
+                        setCurrentPageId('');
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Failed to delete page:', error);
+        }
+    };
+
     const updatePageTitle = async (pageId: string, title: string) => {
         // TODO: Add backend API update if needed?
         // For now local update
@@ -250,6 +284,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             selectChannel,
             updatePageContent,
             updatePageTitle,
+            deletePage,
             refreshWorkspaces
         }}>
             {children}
