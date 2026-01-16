@@ -38,7 +38,9 @@ class Page(Base):
                         onupdate=func.now(), nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False)
 
-    page_name = Column(String(100), nullable=False)
+    page_name = Column(String(50), nullable=False)
+    page_type = Column(String(20), nullable=True)  
+
 
 class VoiceChannel(Base):
     __tablename__ = "voice_channel"
