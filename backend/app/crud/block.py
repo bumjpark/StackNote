@@ -17,6 +17,7 @@ def create_block(db: Session, block: BlockCreate, page_id: str):
         props=block.props,
         content=block.content,
         children_ids=block.children_ids,
+        parent_id=block.parent_id,
         prev_block_id=block.prev_block_id,
         next_block_id=block.next_block_id
     )
@@ -44,6 +45,7 @@ def sync_blocks(db: Session, page_id: str, blocks: List[BlockCreate]):
             existing_block.props = block_data.props
             existing_block.content = block_data.content
             existing_block.children_ids = block_data.children_ids
+            existing_block.parent_id = block_data.parent_id
             existing_block.prev_block_id = block_data.prev_block_id
             existing_block.next_block_id = block_data.next_block_id
             existing_block.is_deleted = False # Restore if it was deleted
@@ -57,6 +59,7 @@ def sync_blocks(db: Session, page_id: str, blocks: List[BlockCreate]):
                 props=block_data.props,
                 content=block_data.content,
                 children_ids=block_data.children_ids,
+                parent_id=block_data.parent_id,
                 prev_block_id=block_data.prev_block_id,
                 next_block_id=block_data.next_block_id
             )

@@ -8,6 +8,7 @@ class BlockBase(BaseModel):
     props: Optional[Dict[str, Any]] = {}
     content: Optional[List[Dict[str, Any]]] = []
     children_ids: Optional[List[str]] = []
+    parent_id: Optional[str] = None
     prev_block_id: Optional[str] = None
     next_block_id: Optional[str] = None
 
