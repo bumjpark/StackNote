@@ -10,7 +10,8 @@ import {
     Lock,
     LogOut,
     Check,
-    User
+    User,
+    Trash2
 } from 'lucide-react';
 
 interface MainLayoutProps {
@@ -98,7 +99,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         createChannel,
         selectWorkspace,
         selectPage,
-        selectChannel
+        selectChannel,
+        deletePage
     } = useWorkspace();
 
     const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
@@ -214,19 +216,32 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         {currentWorkspace?.privatePages.map(page => (
                             <div
                                 key={page.id}
-                                onClick={() => selectPage(page.id)}
                                 style={{
                                     padding: '0.4rem 0.75rem',
                                     fontSize: '0.9rem',
-                                    cursor: 'pointer',
                                     display: 'flex', alignItems: 'center', gap: '0.5rem',
                                     background: page.id === currentPage?.id ? 'rgba(255,255,255,0.05)' : 'transparent',
-                                    color: page.id === currentPage?.id ? 'var(--text-primary)' : 'var(--text-secondary)'
+                                    color: page.id === currentPage?.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                    position: 'relative'
                                 }}
-                                className="hover:bg-white/5"
+                                className="hover:bg-white/5 group"
                             >
                                 <Lock size={14} />
-                                <span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{page.title || 'Untitled'}</span>
+                                <span
+                                    onClick={() => selectPage(page.id)}
+                                    style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1, cursor: 'pointer' }}
+                                >{page.title || 'Untitled'}</span>
+                                <Trash2
+                                    size={14}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (confirm(`Delete "${page.title || 'Untitled'}"?`)) {
+                                            deletePage(page.id);
+                                        }
+                                    }}
+                                    style={{ cursor: 'pointer', opacity: 0.5 }}
+                                    className="hover:opacity-100 hover:text-red-400"
+                                />
                             </div>
                         ))}
                         {currentWorkspace?.privatePages.length === 0 && (
@@ -243,19 +258,32 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         {currentWorkspace?.teamPages.map(page => (
                             <div
                                 key={page.id}
-                                onClick={() => selectPage(page.id)}
                                 style={{
                                     padding: '0.4rem 0.75rem',
                                     fontSize: '0.9rem',
-                                    cursor: 'pointer',
                                     display: 'flex', alignItems: 'center', gap: '0.5rem',
                                     background: page.id === currentPage?.id ? 'rgba(255,255,255,0.05)' : 'transparent',
-                                    color: page.id === currentPage?.id ? 'var(--text-primary)' : 'var(--text-secondary)'
+                                    color: page.id === currentPage?.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                    position: 'relative'
                                 }}
-                                className="hover:bg-white/5"
+                                className="hover:bg-white/5 group"
                             >
                                 <Users size={14} />
-                                <span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{page.title || 'Untitled'}</span>
+                                <span
+                                    onClick={() => selectPage(page.id)}
+                                    style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1, cursor: 'pointer' }}
+                                >{page.title || 'Untitled'}</span>
+                                <Trash2
+                                    size={14}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (confirm(`Delete "${page.title || 'Untitled'}"?`)) {
+                                            deletePage(page.id);
+                                        }
+                                    }}
+                                    style={{ cursor: 'pointer', opacity: 0.5 }}
+                                    className="hover:opacity-100 hover:text-red-400"
+                                />
                             </div>
                         ))}
                         {currentWorkspace?.teamPages.length === 0 && (
