@@ -11,7 +11,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     children,
 }) => {
     // Check for authentication (simulated by verifying token/user_id presence)
-    const isAuthenticated = !!localStorage.getItem('user_id');
+    const isAuthenticated = !!sessionStorage.getItem('user_id');
 
     if (!isAuthenticated) {
         return <Navigate to={redirectPath} replace />;
