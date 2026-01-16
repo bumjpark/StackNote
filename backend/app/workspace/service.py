@@ -4,7 +4,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 import uuid
 
-<<<<<<< HEAD
 from .model import WorkSpace, Page, VoiceChannel
 from .schema import WorkspaceRequest, BlockCreate, BlockUpdate, PageListCreateRequest, VoiceChannelCreateQuery
 =======
