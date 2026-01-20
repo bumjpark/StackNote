@@ -46,8 +46,9 @@ const VoiceManager: React.FC = () => {
         if (!ENABLE_VOICE || !currentChannel) return;
 
         const roomId = currentChannel.id;
-        // WebSocket port updated to 8011 to avoid conflict
-        const wsUrl = (import.meta.env.VITE_WS_URL || `http://localhost:8011/ws`).replace(/^http/, 'ws') + `/${roomId}/${myUserId}`;
+        // Use relative path for WebSocket to leverage Vite Proxy
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/${roomId}/${myUserId}`;
 
         console.log(`Connecting to Voice Server: ${wsUrl}`);
         ws.current = new WebSocket(wsUrl);
