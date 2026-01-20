@@ -1,8 +1,8 @@
 import axios from 'axios';
 
 // Base URL for the backend API
-// Assuming default FastAPI port is 8000. Adjust if needed.
-const API_BASE_URL = 'http://localhost:8000';
+// Updated to 8010 to avoid conflict
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8010';
 
 const client = axios.create({
     baseURL: API_BASE_URL,
