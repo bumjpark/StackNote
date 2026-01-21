@@ -45,13 +45,9 @@ const VoiceManager: React.FC = () => {
         sessionStorage.getItem('user_email') || `User ${myUserId.substring(0, 4)}`
     ).current;
 
-    useEffect(() => {
-        if (!ENABLE_VOICE || !currentChannel) return;
-
+    const connectWebSocket = () => {
         const roomId = currentChannel.id;
-        // Use relative path for WebSocket to leverage Vite Proxy
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        // USE mySessionId instead of myUserId avoids signaling collision on same account
         const wsUrl = `${protocol}//${window.location.host}/ws/${roomId}/${mySessionId}`;
 
         console.log(`Connecting to Voice Server: ${wsUrl}`);
@@ -61,34 +57,8 @@ const VoiceManager: React.FC = () => {
             console.log("WebSocket Connected");
             setIsConnected(true);
 
-            // Initialize Audio Context
-            audioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-            console.log('AudioContext created, state:', audioContext.current.state);
-
-            // Try to resume immediately (may fail due to autoplay policy)
-            if (audioContext.current.state === 'suspended') {
-                audioContext.current.resume().then(() => {
-                    console.log('AudioContext resumed on init');
-                }).catch(err => {
-                    console.warn('Could not resume AudioContext on init:', err);
-                });
-            }
-
-            // Get Local Stream
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                localStream.current = stream;
-                console.log('Local microphone stream acquired');
-
-                // Analyze local audio (do not connect to speakers!)
-                setupAudioAnalysis('me', stream, false);
-
-                // Identify myself to others. 
-                sendSignal({ type: 'identify', username: myUsername });
-
-            } catch (err) {
-                console.error("Failed to get local stream", err);
-            }
+            // Initial identify
+            sendSignal({ type: 'identify', username: myUsername });
         };
 
         ws.current.onmessage = async (event) => {
@@ -100,35 +70,62 @@ const VoiceManager: React.FC = () => {
         ws.current.onclose = () => {
             console.log("WebSocket Disconnected");
             setIsConnected(false);
-            cleanup();
+            // cleanup is called by useEffect return
         };
+    };
 
-        // Start animation loop for volume check
-        const checkVolume = () => {
-            // Check local
-            if (analysers.current['me']) {
-                const vol = getVolume(analysers.current['me']);
-                setIsSpeaking(vol > 10); // Threshold
+    useEffect(() => {
+        if (!ENABLE_VOICE || !currentChannel) return;
+
+        const initVoiceChat = async () => {
+            // 1. Initialize Audio Context
+            const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
+            audioContext.current = new AudioContextClass();
+            console.log('AudioContext created, state:', audioContext.current.state);
+
+            // Try to resume immediately
+            if (audioContext.current.state === 'suspended') {
+                audioContext.current.resume().catch(err => console.warn('Context resume failed on init:', err));
             }
 
-            // Check remotes
+            // 2. Get Local Stream
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                localStream.current = stream;
+                console.log('Local microphone stream acquired');
+
+                // Analyze local audio
+                setupAudioAnalysis('me', stream, false);
+
+                // 3. Connect WebSocket ONLY after stream is ready
+                connectWebSocket();
+
+            } catch (err) {
+                console.error("Failed to get local stream", err);
+                alert("Microphone access deemed necessary. Please check permissions.");
+            }
+        };
+
+        initVoiceChat();
+
+        // Start animation loop
+        const checkVolume = () => {
+            if (analysers.current['me']) {
+                const vol = getVolume(analysers.current['me']);
+                setIsSpeaking(vol > 10);
+            }
             Object.keys(peers.current).forEach(uid => {
                 if (analysers.current[uid]) {
                     const vol = getVolume(analysers.current[uid]);
                     const speaking = vol > 10;
-
                     setPeersInfo(prev => {
                         if (prev[uid]?.isSpeaking !== speaking) {
-                            return {
-                                ...prev,
-                                [uid]: { ...prev[uid], isSpeaking: speaking }
-                            };
+                            return { ...prev, [uid]: { ...prev[uid], isSpeaking: speaking } };
                         }
                         return prev;
                     });
                 }
             });
-
             animationRef.current = requestAnimationFrame(checkVolume);
         };
         animationRef.current = requestAnimationFrame(checkVolume);
