@@ -4,13 +4,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 import uuid
 
-from .model import WorkSpace, Page, VoiceChannel
-from .schema import WorkspaceRequest, BlockCreate, BlockUpdate, PageListCreateRequest, VoiceChannelCreateQuery
-
-from .model import WorkSpace,Page
-from .schema import WorkspaceRequest,PageListCreateRequest
+from app.auth.model import User
+from .model import WorkSpace, Page, VoiceChannel, WorkspaceMember
+from .schema import WorkspaceRequest, BlockCreate, BlockUpdate, PageListCreateRequest, VoiceChannelCreateQuery, WorkspaceInviteRequest
+from fastapi import HTTPException
 from .constants import DEFAULT_PAGES
-
 def create_workspace(
     db: Session,
     workspace_data: WorkspaceRequest
@@ -32,7 +30,16 @@ def get_workspaces_by_user(db: Session, user_id: int):
     """
     유저의 모든 워크스페이스 조회 (페이지 포함)
     """
-    workspaces = db.query(WorkSpace).filter(WorkSpace.user_id == user_id, WorkSpace.is_deleted == False).all()
+    workspaces = (
+        db.query(WorkSpace)
+        .outerjoin(WorkspaceMember, WorkSpace.id == WorkspaceMember.workspace_id)
+        .filter(
+            (WorkSpace.user_id == user_id) | (WorkspaceMember.user_id == user_id),
+            WorkSpace.is_deleted == False
+        )
+        .distinct()
+        .all()
+    )
     results = []
     for ws in workspaces:
          # 해당 워크스페이스의 페이지 조회
@@ -47,6 +54,7 @@ def get_workspaces_by_user(db: Session, user_id: int):
         ws_data = {
             "id": str(ws.id),
             "name": ws.work_space_name,
+            "type": ws.page_type, # private or team
             "privatePages": [],
             "teamPages": [],
             "voiceChannels": [] # Voice channels 구현 시 추가
@@ -296,3 +304,58 @@ def create_voice_channel(
     db.commit()
     db.refresh(channel)
     return channel
+
+def invite_member_to_workspace(
+    db: Session,
+    workspace_id: int,
+    invite_data: WorkspaceInviteRequest,
+    requester_id: int
+):
+    """
+    워크스페이스 멤버 초대
+    """
+    # 1. 워크스페이스 확인
+    workspace = db.query(WorkSpace).filter(
+        WorkSpace.id == workspace_id,
+        WorkSpace.is_deleted == False
+    ).first()
+    
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+        
+    # 2. 권한 확인 (현재는 소유자만 초대 가능)
+    if workspace.user_id != requester_id:
+        # TODO: 추후 관리자 권한 확인 로직 추가
+        raise HTTPException(status_code=403, detail="Only workspace owner can invite members")
+        
+    # 3. 워크스페이스 타입 확인 (개인 스페이스는 초대 불가)
+    if workspace.page_type == "private":
+         raise HTTPException(status_code=400, detail="Cannot invite members to a private workspace")
+
+    # 4. 대상 유저 확인
+    target_user = db.query(User).filter(User.email_id == invite_data.email).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found with this email")
+        
+    # 5. 이미 멤버인지 확인
+    if target_user.id == workspace.user_id:
+        raise HTTPException(status_code=400, detail="User is already the owner")
+        
+    existing_member = db.query(WorkspaceMember).filter(
+        WorkspaceMember.workspace_id == workspace.id,
+        WorkspaceMember.user_id == target_user.id
+    ).first()
+    
+    if existing_member:
+        raise HTTPException(status_code=409, detail="User is already a member")
+        
+    # 6. 멤버 추가
+    new_member = WorkspaceMember(
+        workspace_id=workspace.id,
+        user_id=target_user.id,
+        role="member"
+    )
+    db.add(new_member)
+    db.commit()
+    
+    return {"status": "success", "message": f"User {target_user.email_id} invited to workspace"}

@@ -18,6 +18,7 @@ export interface VoiceChannel {
 export interface Workspace {
     id: string;
     name: string;
+    type: 'private' | 'team';
     privatePages: Page[];
     teamPages: Page[];
     voiceChannels: VoiceChannel[];
@@ -31,6 +32,7 @@ interface WorkspaceContextType {
     createWorkspace: (name: string) => void;
     createPage: (workspaceId: string, title: string, type: 'private' | 'team') => void;
     createChannel: (workspaceId: string, name: string) => void;
+    inviteMember: (workspaceId: string, email: string) => Promise<void>;
     selectWorkspace: (workspaceId: string) => void;
     selectPage: (pageId: string) => void;
     selectChannel: (channelId: string) => void;
@@ -115,6 +117,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             const newWorkspace: Workspace = {
                 id: String(newWsData.work_space_id),
                 name: newWsData.work_space_name,
+                type: 'private', // Default to private for now as per API call above (page_type: 'private')
                 privatePages: [],
                 teamPages: [],
                 voiceChannels: []
@@ -178,6 +181,25 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             }));
         } catch (error) {
             console.error("Failed to create voice channel:", error);
+        }
+    };
+
+
+
+    const inviteMember = async (workspaceId: string, email: string) => {
+        try {
+            await api.post(`/workspace/${workspaceId}/members`, {
+                email,
+                inviter_id: 1 // Mock user ID
+            });
+            alert(`Invitation sent to ${email}`);
+        } catch (error: any) {
+            console.error("Failed to invite member:", error);
+            if (error.response && error.response.data && error.response.data.detail) {
+                alert(`Failed to invite: ${error.response.data.detail}`);
+            } else {
+                alert("Failed to invite member. Please try again.");
+            }
         }
     };
 
@@ -278,7 +300,9 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             currentChannel,
             createWorkspace,
             createPage,
+
             createChannel,
+            inviteMember,
             selectWorkspace,
             selectPage,
             selectChannel,

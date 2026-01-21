@@ -6,6 +6,7 @@ import {
     ChevronDown,
     Plus,
     Users,
+    UserPlus, // Added import
     Mic,
     Lock,
     LogOut,
@@ -14,78 +15,7 @@ import {
     Trash2
 } from 'lucide-react';
 
-interface MainLayoutProps {
-    children: React.ReactNode;
-}
-
-interface VoiceChannelItemProps {
-    channel: { id: string; name: string };
-    isActive: boolean;
-    onSelect: () => void;
-}
-
-const VoiceChannelItem: React.FC<VoiceChannelItemProps> = ({ channel, isActive, onSelect }) => {
-    const [activeUsers, setActiveUsers] = useState<Array<{ user_id: string, username: string }>>([]);
-
-    useEffect(() => {
-        const fetchActiveUsers = async () => {
-            try {
-                const response = await fetch('http://localhost:8001/active_users');
-                const data = await response.json();
-                setActiveUsers(data[channel.id] || []);
-            } catch (err) {
-                console.error('Failed to fetch active users:', err);
-            }
-        };
-
-        fetchActiveUsers();
-        const interval = setInterval(fetchActiveUsers, 3000); // Poll every 3 seconds
-        return () => clearInterval(interval);
-    }, [channel.id]);
-
-    return (
-        <div>
-            {/* Channel Name */}
-            <div
-                onClick={onSelect}
-                style={{
-                    padding: '0.4rem 0.75rem',
-                    fontSize: '0.9rem',
-                    cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                    background: isActive ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
-                    color: isActive ? '#10b981' : 'var(--text-secondary)'
-                }}
-                className="hover:bg-white/5"
-            >
-                <Mic size={14} />
-                <span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{channel.name}</span>
-            </div>
-
-            {/* Active Users */}
-            {activeUsers.length > 0 && (
-                <div style={{ paddingLeft: '2rem', marginTop: '0.25rem' }}>
-                    {activeUsers.map(user => (
-                        <div
-                            key={user.user_id}
-                            style={{
-                                padding: '0.25rem 0.5rem',
-                                fontSize: '0.85rem',
-                                color: 'var(--text-secondary)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.5rem'
-                            }}
-                        >
-                            <User size={12} />
-                            <span>{user.username}</span>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-};
+// ... (existing code)
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const navigate = useNavigate();
@@ -97,6 +27,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         createWorkspace,
         createPage,
         createChannel,
+        inviteMember, // Destructure inviteMember
         selectWorkspace,
         selectPage,
         selectChannel,
@@ -253,7 +184,25 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     <div style={{ marginBottom: '1.5rem' }}>
                         <div style={{ padding: '0 0.75rem 0.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-secondary)' }}>
                             <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>TEAM SPACES</span>
-                            <Plus size={14} style={{ cursor: 'pointer' }} onClick={() => currentWorkspace && createPage(currentWorkspace.id, 'Untitled Team Page', 'team')} />
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <UserPlus
+                                    size={14}
+                                    style={{ cursor: 'pointer' }}
+                                    onClick={() => {
+                                        if (!currentWorkspace) return;
+                                        if (currentWorkspace.type === 'private') {
+                                            alert("개인 워크스페이스에는 멤버를 초대할 수 없습니다.");
+                                            return;
+                                        }
+                                        const email = prompt("초대할 팀원의 이메일을 입력하세요:");
+                                        if (email) {
+                                            inviteMember(currentWorkspace.id, email);
+                                        }
+                                    }}
+                                    title="Invite Member"
+                                />
+                                <Plus size={14} style={{ cursor: 'pointer' }} onClick={() => currentWorkspace && createPage(currentWorkspace.id, 'Untitled Team Page', 'team')} title="Create Page" />
+                            </div>
                         </div>
                         {currentWorkspace?.teamPages.map(page => (
                             <div

@@ -17,7 +17,8 @@ from .schema import (
     PageListCreateResponse,
     PageListUserResponse,
     VoiceChannelCreateQuery,
-    VoiceChannelCreateResponse
+    VoiceChannelCreateResponse,
+    WorkspaceInviteRequest
 )
 from . import service
 
@@ -194,3 +195,14 @@ def create_voice_channel(
         channel_id=channel.id,
         channel_name=channel.name
     )
+
+@router.post("/{workspace_id}/members", tags=["Workspace"])
+def invite_member(
+    workspace_id: int,
+    request: WorkspaceInviteRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    워크스페이스에 멤버 초대 (현재는 소유자만 가능)
+    """
+    return service.invite_member_to_workspace(db, workspace_id, request, request.inviter_id)

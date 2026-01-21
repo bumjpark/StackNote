@@ -13,6 +13,10 @@ class WorkspaceUserResponse(BaseModel):
 
 class WorkspaceResponse(BaseModel):
     user: Optional[WorkspaceUserResponse] = None
+    
+class WorkspaceInviteRequest(BaseModel):
+    email: str
+    inviter_id: int
 
 # Block Schemas
 class BlockBase(BaseModel):
