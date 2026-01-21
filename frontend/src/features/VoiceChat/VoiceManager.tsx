@@ -30,12 +30,15 @@ const VoiceManager: React.FC = () => {
     const ws = useRef<WebSocket | null>(null);
     const localStream = useRef<MediaStream | null>(null);
     const peers = useRef<PeerConnection>({});
+    const pendingCandidates = useRef<Record<string, RTCIceCandidate[]>>({}); // Queue for early candidates
     const audioContext = useRef<AudioContext | null>(null);
     const analysers = useRef<Record<string, AnalyserNode>>({}); // userId -> analyser (local is 'me')
     const gainNodes = useRef<Record<string, GainNode>>({}); // userId -> gain (volume/mute control)
     const animationRef = useRef<number | null>(null);
 
     const myUserId = useRef<string>(sessionStorage.getItem('user_id') || `user-${Math.floor(Math.random() * 1000)}`).current;
+    // Create a unique session ID for this specific tab/connection to allow same-user testing
+    const mySessionId = useRef<string>(`${myUserId}-${Math.random().toString(36).substr(2, 5)}`).current;
 
     // Attempt to get email, fallback to ID based name
     const myUsername = useRef<string>(
@@ -48,7 +51,8 @@ const VoiceManager: React.FC = () => {
         const roomId = currentChannel.id;
         // Use relative path for WebSocket to leverage Vite Proxy
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/${roomId}/${myUserId}`;
+        // USE mySessionId instead of myUserId avoids signaling collision on same account
+        const wsUrl = `${protocol}//${window.location.host}/ws/${roomId}/${mySessionId}`;
 
         console.log(`Connecting to Voice Server: ${wsUrl}`);
         ws.current = new WebSocket(wsUrl);
@@ -319,6 +323,16 @@ const VoiceManager: React.FC = () => {
         }
 
         await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+
+        // Process queued candidates
+        if (pendingCandidates.current[data.sender_user_id]) {
+            console.log(`Processing ${pendingCandidates.current[data.sender_user_id].length} queued candidates for ${data.sender_user_id}`);
+            for (const candidate of pendingCandidates.current[data.sender_user_id]) {
+                await peer.addIceCandidate(candidate);
+            }
+            delete pendingCandidates.current[data.sender_user_id];
+        }
+
         const answer = await peer.createAnswer();
         await peer.setLocalDescription(answer);
 
@@ -327,12 +341,36 @@ const VoiceManager: React.FC = () => {
 
     const handleAnswer = async (data: any) => {
         const peer = peers.current[data.sender_user_id];
-        if (peer) await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        if (peer) {
+            await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+
+            // Process queued candidates
+            if (pendingCandidates.current[data.sender_user_id]) {
+                console.log(`Processing ${pendingCandidates.current[data.sender_user_id].length} queued candidates for ${data.sender_user_id}`);
+                for (const candidate of pendingCandidates.current[data.sender_user_id]) {
+                    await peer.addIceCandidate(candidate);
+                }
+                delete pendingCandidates.current[data.sender_user_id];
+            }
+        }
     };
 
     const handleCandidate = async (data: any) => {
         const peer = peers.current[data.sender_user_id];
-        if (peer && data.candidate) await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
+        if (!data.candidate) return;
+
+        const candidate = new RTCIceCandidate(data.candidate);
+
+        if (peer && peer.remoteDescription) {
+            await peer.addIceCandidate(candidate);
+        } else {
+            // Queue candidate if peer doesn't exist or remote description not set
+            console.log(`Queueing ICE candidate for ${data.sender_user_id} (not ready)`);
+            if (!pendingCandidates.current[data.sender_user_id]) {
+                pendingCandidates.current[data.sender_user_id] = [];
+            }
+            pendingCandidates.current[data.sender_user_id].push(candidate);
+        }
     };
 
     const handleDisconnect = () => {
