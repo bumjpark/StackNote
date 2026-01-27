@@ -13,6 +13,10 @@ class WorkspaceUserResponse(BaseModel):
 
 class WorkspaceResponse(BaseModel):
     user: Optional[WorkspaceUserResponse] = None
+    
+class WorkspaceInviteRequest(BaseModel):
+    email: str
+    inviter_id: int
 
 # Block Schemas
 class BlockBase(BaseModel):
@@ -31,6 +35,13 @@ class BlockUpdate(BaseModel):
     content: Optional[dict[str, Any]] = None
     order: Optional[float] = None
     parent_id: Optional[str] = None
+
+class WorkspaceUpdate(BaseModel):
+    work_space_name: str
+
+class PageUpdate(BaseModel):
+    page_name: Optional[str] = None
+    icon: Optional[str] = None
 
 class BlockResponse(BlockBase):
     id: str

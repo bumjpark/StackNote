@@ -26,3 +26,10 @@ class User(Base):
     chatrooms = relationship("app.workspace.model.Chatroom", secondary="chatroom_users", back_populates="users")
     messages = relationship("app.workspace.model.Message", back_populates="sender")
     workspaces = relationship("app.workspace.model.WorkSpace", back_populates="user")
+    
+    # Workspaces where the user is a member (but not necessarily the owner)
+    shared_workspaces = relationship(
+        "app.workspace.model.WorkSpace",
+        secondary="workspace_members",
+        back_populates="members"
+    )

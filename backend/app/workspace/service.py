@@ -4,13 +4,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 import uuid
 
-from .model import WorkSpace, Page, VoiceChannel
-from .schema import WorkspaceRequest, BlockCreate, BlockUpdate, PageListCreateRequest, VoiceChannelCreateQuery
-
-from .model import WorkSpace,Page
-from .schema import WorkspaceRequest,PageListCreateRequest
+from app.auth.model import User
+from .model import WorkSpace, Page, VoiceChannel, WorkspaceMember
+from .schema import WorkspaceRequest, BlockCreate, BlockUpdate, PageListCreateRequest, VoiceChannelCreateQuery, WorkspaceInviteRequest
+from fastapi import HTTPException
 from .constants import DEFAULT_PAGES
-
 def create_workspace(
     db: Session,
     workspace_data: WorkspaceRequest
@@ -32,7 +30,29 @@ def get_workspaces_by_user(db: Session, user_id: int):
     """
     유저의 모든 워크스페이스 조회 (페이지 포함)
     """
-    workspaces = db.query(WorkSpace).filter(WorkSpace.user_id == user_id, WorkSpace.is_deleted == False).all()
+    # 1. Owned workspaces
+    owned_workspaces = db.query(WorkSpace).filter(
+        WorkSpace.user_id == user_id,
+        WorkSpace.is_deleted == False
+    ).all()
+
+    # 2. Member workspaces (accepted only)
+    member_records = db.query(WorkspaceMember).filter(
+        WorkspaceMember.user_id == user_id,
+        WorkspaceMember.status == 'accepted'
+    ).all()
+    
+    member_workspaces = []
+    if member_records:
+        member_workspace_ids = [r.workspace_id for r in member_records]
+        member_workspaces = db.query(WorkSpace).filter(
+            WorkSpace.id.in_(member_workspace_ids),
+            WorkSpace.is_deleted == False
+        ).all()
+        
+    # Combine and distinct by ID
+    all_workspaces_map = {ws.id: ws for ws in owned_workspaces + member_workspaces}
+    workspaces = list(all_workspaces_map.values())
     results = []
     for ws in workspaces:
          # 해당 워크스페이스의 페이지 조회
@@ -47,6 +67,7 @@ def get_workspaces_by_user(db: Session, user_id: int):
         ws_data = {
             "id": str(ws.id),
             "name": ws.work_space_name,
+            "type": ws.page_type, # private or team
             "privatePages": [],
             "teamPages": [],
             "voiceChannels": [] # Voice channels 구현 시 추가
@@ -64,12 +85,15 @@ def get_workspaces_by_user(db: Session, user_id: int):
             page_data = {
                 "id": str(p.id),
                 "title": p.page_name,
+                "icon": p.icon,
                 "content": "", # 목록 조회시엔 컨텐츠 제외 (가벼운 응답)
                 "type": final_type
             }
             
             if final_type == "private":
-                ws_data["privatePages"].append(page_data)
+                # Only show private pages if they belong to the requesting user
+                if p.user_id == user_id:
+                    ws_data["privatePages"].append(page_data)
             else:
                 ws_data["teamPages"].append(page_data)
                 
@@ -296,3 +320,127 @@ def create_voice_channel(
     db.commit()
     db.refresh(channel)
     return channel
+
+def invite_member_to_workspace(
+    db: Session,
+    workspace_id: int,
+    invite_data: WorkspaceInviteRequest,
+    requester_id: int
+):
+    """
+    워크스페이스 멤버 초대
+    """
+    # 1. 워크스페이스 확인
+    workspace = db.query(WorkSpace).filter(
+        WorkSpace.id == workspace_id,
+        WorkSpace.is_deleted == False
+    ).first()
+    
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+        
+    # 2. 권한 확인 (현재는 소유자만 초대 가능)
+    if workspace.user_id != requester_id:
+        # TODO: 추후 관리자 권한 확인 로직 추가
+        raise HTTPException(status_code=403, detail="Only workspace owner can invite members")
+        
+    # 3. 워크스페이스 타입 확인 (개인 스페이스는 초대 불가) - Removed as every workspace has both private and team spaces
+    # if workspace.page_type == "private":
+    #      raise HTTPException(status_code=400, detail="Cannot invite members to a private workspace")
+
+    # 4. 대상 유저 확인
+    target_user = db.query(User).filter(User.email_id == invite_data.email).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found with this email")
+        
+    # 5. 이미 멤버인지 확인
+    if target_user.id == workspace.user_id:
+        raise HTTPException(status_code=400, detail="User is already the owner")
+        
+    existing_member = db.query(WorkspaceMember).filter(
+        WorkspaceMember.workspace_id == workspace.id,
+        WorkspaceMember.user_id == target_user.id
+    ).first()
+    
+    if existing_member:
+        raise HTTPException(status_code=409, detail="User is already a member")
+        
+    # 6. 멤버 추가
+    new_member = WorkspaceMember(
+        workspace_id=workspace.id,
+        user_id=target_user.id,
+        role="member",
+        status="pending"
+    )
+    db.add(new_member)
+    db.commit()
+    
+    return {"status": "success", "message": f"User {target_user.email_id} invited to workspace"}
+
+def get_user_invitations(db: Session, user_id: int):
+    """
+    대기 중인 초대 목록 조회
+    """
+    # 사용자가 'pending' 상태로 멤버에 포함된 워크스페이스 찾기
+    pending_memberships = db.query(WorkspaceMember).filter(
+        WorkspaceMember.user_id == user_id,
+        WorkspaceMember.status == "pending"
+    ).all()
+    
+    results = []
+    for pm in pending_memberships:
+        workspace = db.query(WorkSpace).filter(WorkSpace.id == pm.workspace_id).first()
+        if workspace:
+            results.append({
+                "workspace_id": workspace.id,
+                "workspace_name": workspace.work_space_name,
+                "inviter_id": workspace.user_id, # Assuming owner invited for now
+                "invited_at": pm.joined_at
+            })
+    return results
+
+def respond_invitation(db: Session, workspace_id: int, user_id: int, response: str):
+    """
+    초대 응답 (수락/거절)
+    """
+    member_record = db.query(WorkspaceMember).filter(
+        WorkspaceMember.workspace_id == workspace_id,
+        WorkspaceMember.user_id == user_id,
+        WorkspaceMember.status == "pending"
+    ).first()
+    
+    if not member_record:
+        raise HTTPException(status_code=404, detail="No pending invitation found")
+        
+    if response == "accepted":
+        member_record.status = "accepted"
+        db.commit()
+        return {"status": "success", "message": "Invitation accepted"}
+    elif response == "declined":
+        db.delete(member_record) # 거절 시 기록 삭제 (또는 declined status로 변경)
+        db.commit()
+        return {"status": "success", "message": "Invitation declined"}
+    else:
+        raise HTTPException(status_code=400, detail="Invalid response")
+
+def update_workspace(db: Session, workspace_id: int, name: str):
+    workspace = db.query(WorkSpace).filter(WorkSpace.id == workspace_id).first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    workspace.work_space_name = name
+    db.commit()
+    db.refresh(workspace)
+    return workspace
+
+def update_page(db: Session, page_id: str, updates: dict):
+    page = db.query(Page).filter(Page.id == page_id).first()
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+    
+    for key, value in updates.items():
+        if value is not None:
+            setattr(page, key, value)
+            
+    db.commit()
+    db.refresh(page)
+    return page
