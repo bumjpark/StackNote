@@ -309,8 +309,33 @@ def create_voice_channel(
     query: VoiceChannelCreateQuery
 ) -> VoiceChannel:
     """
-    보이스 채널 생성
+    보이스 채널 생성 (권한 확인 포함)
     """
+    # 1. 워크스페이스 확인
+    workspace = db.query(WorkSpace).filter(
+        WorkSpace.id == query.work_space_id,
+        WorkSpace.is_deleted == False
+    ).first()
+    
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # 2. 권한 확인 (소유자이거나 승인된 멤버여야 함)
+    is_owner = workspace.user_id == query.user_id
+    is_member = False
+    
+    if not is_owner:
+        membership = db.query(WorkspaceMember).filter(
+            WorkspaceMember.workspace_id == workspace.id,
+            WorkspaceMember.user_id == query.user_id,
+            WorkspaceMember.status == "accepted"
+        ).first()
+        if membership:
+            is_member = True
+            
+    if not (is_owner or is_member):
+        raise HTTPException(status_code=403, detail="Not authorized to create voice channels in this workspace")
+
     channel = VoiceChannel(
         workspace_id=query.work_space_id,
         name=query.channel_name,
@@ -444,3 +469,45 @@ def update_page(db: Session, page_id: str, updates: dict):
     db.commit()
     db.refresh(page)
     return page
+    return service.respond_invitation(db, workspace_id, user_id, "declined")
+
+def get_workspace_members(db: Session, workspace_id: int):
+    """
+    워크스페이스의 멤버 목록 조회 (Accepted status only)
+    """
+    # 1. Fetch relations
+    members = db.query(WorkspaceMember).filter(
+        WorkspaceMember.workspace_id == workspace_id,
+        WorkspaceMember.status == 'accepted'
+    ).all()
+    
+    # 2. Add owner? (Owner might not be in WorkspaceMember table depending on logic, 
+    # but usually owner is implicitly a member. Let's check WorkSpace owner first.)
+    workspace = db.query(WorkSpace).filter(WorkSpace.id == workspace_id).first()
+    if not workspace:
+        return []
+
+    result = []
+    
+    # Add Owner
+    owner = db.query(User).filter(User.id == workspace.user_id).first()
+    if owner:
+         result.append({
+            "id": owner.id,
+            "email": owner.email_id,
+            "name": owner.email_id.split('@')[0], # Fallback name
+            "role": "owner"
+        })
+
+    # Add Members
+    for m in members:
+        user = db.query(User).filter(User.id == m.user_id).first()
+        if user and user.id != workspace.user_id: # Avoid duplicate if owner is in member table
+             result.append({
+                "id": user.id,
+                "email": user.email_id,
+                "name": user.email_id.split('@')[0],
+                "role": m.role
+            })
+            
+    return result

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
+from typing import List, Optional
 from sqlalchemy.orm import Session
-
 
 from app.core.database import get_db
 from .model import WorkSpace, Page
@@ -20,9 +20,9 @@ from .schema import (
     VoiceChannelCreateResponse,
     WorkspaceInviteRequest,
     WorkspaceUpdate,
-    PageUpdate
+    PageUpdate,
+    WorkspaceMemberResponse
 )
-from . import service
 
 router = APIRouter(
     prefix="/workspace",
@@ -208,6 +208,16 @@ def invite_member(
     워크스페이스에 멤버 초대 (현재는 소유자만 가능)
     """
     return service.invite_member_to_workspace(db, workspace_id, request, request.inviter_id)
+
+@router.get("/{workspace_id}/members", response_model=List[WorkspaceMemberResponse])
+def get_members(
+    workspace_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    워크스페이스 멤버 조회
+    """
+    return service.get_workspace_members(db, workspace_id)
 
 @router.patch("/{workspace_id}", response_model=WorkspaceResponse)
 def update_workspace_name(

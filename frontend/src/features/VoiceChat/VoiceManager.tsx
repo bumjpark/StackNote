@@ -14,6 +14,17 @@ interface PeerInfo {
     isMuted: boolean; // Local mute state tracking (for UI)
 }
 
+// Safe context resume helper
+const safeResume = async (ctx: AudioContext) => {
+    if (ctx.state === 'suspended') {
+        try {
+            await ctx.resume();
+        } catch (err) {
+            console.warn("Context resume failed:", err);
+        }
+    }
+};
+
 const VoiceManager: React.FC = () => {
     const { currentChannel, selectChannel } = useWorkspace();
     const [isConnected, setIsConnected] = useState(false);
@@ -33,7 +44,8 @@ const VoiceManager: React.FC = () => {
     const pendingCandidates = useRef<Record<string, RTCIceCandidate[]>>({}); // Queue for early candidates
     const audioContext = useRef<AudioContext | null>(null);
     const analysers = useRef<Record<string, AnalyserNode>>({}); // userId -> analyser (local is 'me')
-    const gainNodes = useRef<Record<string, GainNode>>({}); // userId -> gain (volume/mute control)
+    const gainNodes = useRef<Record<string, GainNode>>({}); // userId -> gain (volume/mute control - for visual analysis only if decoupled)
+    const remoteAudioElements = useRef<Record<string, HTMLAudioElement>>({}); // userId -> audio element for playback
     const animationRef = useRef<number | null>(null);
 
     const myUserId = useRef<string>(sessionStorage.getItem('user_id') || `user-${Math.floor(Math.random() * 1000)}`).current;
@@ -46,6 +58,7 @@ const VoiceManager: React.FC = () => {
     ).current;
 
     const connectWebSocket = () => {
+        if (!currentChannel) return;
         const roomId = currentChannel.id;
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws/${roomId}/${mySessionId}`;
@@ -102,7 +115,7 @@ const VoiceManager: React.FC = () => {
 
             } catch (err) {
                 console.error("Failed to get local stream", err);
-                alert("Microphone access deemed necessary. Please check permissions.");
+                // Do not alert, just log. Alert might cause focus issues.
             }
         };
 
@@ -119,7 +132,10 @@ const VoiceManager: React.FC = () => {
                     const vol = getVolume(analysers.current[uid]);
                     const speaking = vol > 10;
                     setPeersInfo(prev => {
-                        if (prev[uid]?.isSpeaking !== speaking) {
+                        // Guard: If we have audio but no user info yet (identify signal pending), skip update
+                        if (!prev[uid]) return prev;
+
+                        if (prev[uid].isSpeaking !== speaking) {
                             return { ...prev, [uid]: { ...prev[uid], isSpeaking: speaking } };
                         }
                         return prev;
@@ -145,14 +161,14 @@ const VoiceManager: React.FC = () => {
     }, [isMicMuted]);
 
     useEffect(() => {
-        // Handle Deafen (Output Mute) via Gain Nodes
-        Object.values(gainNodes.current).forEach(gainNode => {
-            gainNode.gain.value = isDeafened ? 0 : 1;
+        // Handle Deafen (Output Mute) via Audio Elements
+        Object.values(remoteAudioElements.current).forEach(audio => {
+            audio.muted = isDeafened;
         });
 
         // Also resume context if it was suspended (interaction trigger)
-        if (audioContext.current?.state === 'suspended') {
-            audioContext.current.resume();
+        if (audioContext.current) {
+            safeResume(audioContext.current);
         }
     }, [isDeafened]);
 
@@ -165,15 +181,14 @@ const VoiceManager: React.FC = () => {
     }
 
     const setupAudioAnalysis = (id: string, stream: MediaStream, connectToSpeakers: boolean) => {
-        if (!audioContext.current) return;
+        if (!audioContext.current || audioContext.current.state === 'closed') return;
+        if (!stream || !stream.getAudioTracks().length) {
+            console.warn(`[VoiceManager] Stream for ${id} has no audio tracks.`);
+            return;
+        }
 
         // Resume context if needed
-        if (audioContext.current.state === 'suspended') {
-            console.log('AudioContext suspended, attempting to resume...');
-            audioContext.current.resume().then(() => {
-                console.log('AudioContext resumed successfully');
-            });
-        }
+        safeResume(audioContext.current);
 
         const source = audioContext.current.createMediaStreamSource(stream);
         const analyser = audioContext.current.createAnalyser();
@@ -182,16 +197,29 @@ const VoiceManager: React.FC = () => {
         source.connect(analyser);
 
         if (connectToSpeakers) {
-            console.log(`Connecting remote audio stream ${id} to speakers`);
-            // Connect to GainNode (for volume/mute control) then Destination
-            const gainNode = audioContext.current.createGain();
-            gainNode.gain.value = 1; // Start unmuted, will be controlled by useEffect
+            // Use native Audio element for reliable playback
+            if (!remoteAudioElements.current[id]) {
+                console.log(`Creating new Audio element for ${id}`);
+                const audio = new Audio();
+                audio.srcObject = stream;
+                audio.volume = 1.0;
+                audio.muted = isDeafened; // Apply current deafen state
+                audio.play().catch(e => console.error("Audio playback failed:", e));
+                remoteAudioElements.current[id] = audio;
+            } else {
+                // Update existing if stream changed
+                if (remoteAudioElements.current[id].srcObject !== stream) {
+                    remoteAudioElements.current[id].srcObject = stream;
+                    remoteAudioElements.current[id].play().catch(e => console.error("Audio playback update failed:", e));
+                }
+            }
 
-            analyser.connect(gainNode);
-            gainNode.connect(audioContext.current.destination);
+            // For visualization, we still connect to analyser, but NOT to destination to avoid echo/double audio
+            // The audio chain for visual is: source -> analyser (end)
+            // The audio chain for hearing is: <Audio> element (managed above)
 
-            gainNodes.current[id] = gainNode;
-            console.log(`Audio stream ${id} connected to speakers successfully`);
+            // We don't need gainNodes for playback anymore, but if we wanted to visualize "post-gain" volume we could keep it.
+            // For now, let's visualize the raw stream volume.
         }
 
         analysers.current[id] = analyser;
@@ -204,7 +232,12 @@ const VoiceManager: React.FC = () => {
         if (audioContext.current) audioContext.current.close();
 
         Object.values(peers.current).forEach(peer => peer.close());
+        Object.values(remoteAudioElements.current).forEach(audio => {
+            audio.pause();
+            audio.srcObject = null;
+        });
         peers.current = {};
+        remoteAudioElements.current = {};
         analysers.current = {};
         gainNodes.current = {};
         setIsConnected(false);
@@ -228,6 +261,16 @@ const VoiceManager: React.FC = () => {
                         isMuted: false
                     }
                 }));
+                // Handshake: If this was a request for identity exchange, reply back
+                if (data.requestReply) {
+                    console.log(`Replying to identity request from ${data.sender_user_id}`);
+                    sendSignal({
+                        type: 'identify',
+                        username: myUsername,
+                        target_user_id: data.sender_user_id,
+                        requestReply: false // Don't ask them to reply again (infinite loop prevention)
+                    });
+                }
                 break;
 
             case 'user_joined':
@@ -235,7 +278,8 @@ const VoiceManager: React.FC = () => {
                 sendSignal({
                     type: 'identify',
                     username: myUsername,
-                    target_user_id: data.user_id
+                    target_user_id: data.user_id,
+                    requestReply: true // Ask the new user to identify themselves back
                 });
                 createPeerConnection(data.user_id, true);
                 break;
@@ -255,9 +299,17 @@ const VoiceManager: React.FC = () => {
                     delete analysers.current[data.user_id];
                 }
                 if (gainNodes.current[data.user_id]) {
+                    // Disconnect nodes to prevent memory leaks/AudioContext errors
+                    try {
+                        gainNodes.current[data.user_id].disconnect();
+                    } catch (e) { console.warn("Failed to disconnect gain node", e); }
                     delete gainNodes.current[data.user_id];
                 }
-                break;
+                if (remoteAudioElements.current[data.user_id]) {
+                    remoteAudioElements.current[data.user_id].pause();
+                    remoteAudioElements.current[data.user_id].srcObject = null;
+                    delete remoteAudioElements.current[data.user_id];
+                } break;
 
             case 'offer':
                 await handleOffer(data);
@@ -291,8 +343,17 @@ const VoiceManager: React.FC = () => {
 
         peer.ontrack = (event) => {
             console.log(`Received remote track from ${targetUserId}`, event.streams[0]);
-            // Connect to speakers via Web Audio API
-            setupAudioAnalysis(targetUserId, event.streams[0], true);
+            try {
+                if (event.streams && event.streams[0]) {
+                    setupAudioAnalysis(targetUserId, event.streams[0], true);
+                } else {
+                    // Fallback: create stream from track
+                    const inboundStream = new MediaStream([event.track]);
+                    setupAudioAnalysis(targetUserId, inboundStream, true);
+                }
+            } catch (e) {
+                console.error(`Error handling track from ${targetUserId}:`, e);
+            }
         };
 
         if (isInitiator) {

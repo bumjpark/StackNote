@@ -79,3 +79,9 @@ class VoiceChannelCreateResponse(BaseModel):
     status: str
     channel_id: str
     channel_name: str
+
+class WorkspaceMemberResponse(BaseModel):
+    id: int
+    email: str
+    name: Optional[str] = None
+    role: str
