@@ -389,9 +389,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         <div style={{ padding: '0 0.75rem 0.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-secondary)' }}>
                             <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>TEAM SPACES</span>
                             <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                <UserPlus
-                                    size={14}
-                                    style={{ cursor: 'pointer' }}
+                                <div
+                                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                                     onClick={() => {
                                         if (!currentWorkspace) return;
                                         // Removed restrictions on private workspaces
@@ -401,8 +400,16 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                         }
                                     }}
                                     title="Invite Member"
-                                />
-                                <Plus size={14} style={{ cursor: 'pointer' }} onClick={() => currentWorkspace && createPage(currentWorkspace.id, 'Untitled Team Page', 'team')} title="Create Page" />
+                                >
+                                    <UserPlus size={14} />
+                                </div>
+                                <div
+                                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                                    onClick={() => currentWorkspace && createPage(currentWorkspace.id, 'Untitled Team Page', 'team')}
+                                    title="Create Page"
+                                >
+                                    <Plus size={14} />
+                                </div>
                             </div>
                         </div>
                         {currentWorkspace?.teamPages.map(page => (

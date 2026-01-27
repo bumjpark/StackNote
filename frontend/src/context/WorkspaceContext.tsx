@@ -7,6 +7,7 @@ export interface Page {
     title: string;
     content: string;
     type: 'private' | 'team';
+    icon?: string;
 }
 
 export interface VoiceChannel {
@@ -29,7 +30,7 @@ interface WorkspaceContextType {
     currentWorkspace: Workspace | null;
     currentPage: Page | null;
     currentChannel: VoiceChannel | null;
-    createWorkspace: (name: string) => void;
+    createWorkspace: (name: string, type: 'private' | 'team') => void;
     createPage: (workspaceId: string, title: string, type: 'private' | 'team') => void;
     createChannel: (workspaceId: string, name: string) => void;
     inviteMember: (workspaceId: string, email: string) => Promise<void>;
@@ -38,8 +39,12 @@ interface WorkspaceContextType {
     selectChannel: (channelId: string) => void;
     updatePageContent: (pageId: string, content: string) => void;
     updatePageTitle: (pageId: string, title: string) => void;
+    updatePageIcon: (pageId: string, icon: string) => void;
+    updateWorkspaceName: (workspaceId: string, name: string) => void;
     deletePage: (pageId: string) => Promise<void>;
     refreshWorkspaces: () => Promise<void>;
+    getInvitations: () => Promise<any[]>;
+    respondInvitation: (workspaceId: string, accept: boolean) => Promise<void>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -104,12 +109,15 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
     const currentPage = findPage(currentPageId, currentWorkspace);
     const currentChannel = currentWorkspace?.voiceChannels.find(c => c.id === currentChannelId) || null;
 
-    const createWorkspace = async (name: string) => {
+    const createWorkspace = async (name: string, type: 'private' | 'team') => {
         try {
+            const userId = localStorage.getItem('user_id');
+            if (!userId) return;
+
             const response = await api.post('/workspace', {
-                user_id: 1, // Mock user ID
+                user_id: parseInt(userId),
                 work_space_name: name,
-                page_type: 'private' // Defaulting
+                page_type: type
             });
             // Refetch to get consistent ID and state
             // Or construct manually if response contains enough info
@@ -117,7 +125,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             const newWorkspace: Workspace = {
                 id: String(newWsData.work_space_id),
                 name: newWsData.work_space_name,
-                type: 'private', // Default to private for now as per API call above (page_type: 'private')
+                type: type, // Use provided type
                 privatePages: [],
                 teamPages: [],
                 voiceChannels: []
@@ -133,8 +141,11 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
 
     const createPage = async (workspaceId: string, title: string, type: 'private' | 'team') => {
         try {
+            const userId = localStorage.getItem('user_id');
+            if (!userId) return;
+
             const response = await api.post('/workspace/page_list', {
-                user_id: 1,
+                user_id: parseInt(userId),
                 work_space_id: parseInt(workspaceId),
                 page_type: type,
                 page_list: [title]
@@ -163,8 +174,11 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
 
     const createChannel = async (workspaceId: string, name: string) => {
         try {
+            const userId = localStorage.getItem('user_id');
+            if (!userId) return;
+
             const response = await api.post('/workspace/voice_channel', {
-                user_id: 1, // Mock user ID
+                user_id: parseInt(userId),
                 work_space_id: parseInt(workspaceId),
                 channel_name: name
             });
@@ -188,9 +202,14 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
 
     const inviteMember = async (workspaceId: string, email: string) => {
         try {
+            const userId = localStorage.getItem('user_id');
+            if (!userId) {
+                alert("Please login first");
+                return;
+            }
             await api.post(`/workspace/${workspaceId}/members`, {
                 email,
-                inviter_id: 1 // Mock user ID
+                inviter_id: parseInt(userId)
             });
             alert(`Invitation sent to ${email}`);
         } catch (error: any) {
@@ -200,6 +219,34 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             } else {
                 alert("Failed to invite member. Please try again.");
             }
+        }
+    };
+
+    const getInvitations = async () => {
+        try {
+            const userId = localStorage.getItem('user_id');
+            if (!userId) return [];
+            const response = await api.get(`/workspace/user/${userId}/invitations`);
+            return response.data;
+        } catch (error) {
+            console.error("Failed to fetch invitations:", error);
+            return [];
+        }
+    };
+
+    const respondInvitation = async (workspaceId: string, accept: boolean) => {
+        try {
+            const userId = localStorage.getItem('user_id');
+            const endpoint = accept ? 'accept' : 'decline';
+            await api.post(`/workspace/invitations/${workspaceId}/${endpoint}`, {
+                user_id: parseInt(userId || '0')
+            });
+            // Refresh workspaces if accepted
+            if (accept) {
+                await refreshWorkspaces();
+            }
+        } catch (error) {
+            console.error("Failed to respond to invitation:", error);
         }
     };
 
@@ -277,20 +324,54 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
     };
 
     const updatePageTitle = async (pageId: string, title: string) => {
-        // TODO: Add backend API update if needed?
-        // For now local update
-        setWorkspaces(prev => prev.map(ws => {
-            if (ws.id === currentWorkspaceId) {
-                const updateList = (list: Page[]) => list.map(p => p.id === pageId ? { ...p, title } : p);
-                return {
-                    ...ws,
-                    privatePages: updateList(ws.privatePages),
-                    teamPages: updateList(ws.teamPages)
-                };
-            }
-            return ws;
-        }));
+        try {
+            // Optimistic update
+            setWorkspaces(prev => prev.map(ws => {
+                if (ws.id === currentWorkspaceId) {
+                    const updateList = (list: Page[]) => list.map(p => p.id === pageId ? { ...p, title } : p);
+                    return {
+                        ...ws,
+                        privatePages: updateList(ws.privatePages),
+                        teamPages: updateList(ws.teamPages)
+                    };
+                }
+                return ws;
+            }));
+            await api.patch(`/workspace/pages/${pageId}`, { page_name: title });
+        } catch (error) {
+            console.error("Failed to update page title:", error);
+        }
     }
+
+    const updatePageIcon = async (pageId: string, icon: string) => {
+        try {
+            setWorkspaces(prev => prev.map(ws => {
+                if (ws.id === currentWorkspaceId) {
+                    const updateList = (list: Page[]) => list.map(p => p.id === pageId ? { ...p, icon } : p);
+                    return {
+                        ...ws,
+                        privatePages: updateList(ws.privatePages),
+                        teamPages: updateList(ws.teamPages)
+                    };
+                }
+                return ws;
+            }));
+            await api.patch(`/workspace/pages/${pageId}`, { icon });
+        } catch (error) {
+            console.error("Failed to update icon:", error);
+        }
+    };
+
+    const updateWorkspaceName = async (workspaceId: string, name: string) => {
+        try {
+            setWorkspaces(prev => prev.map(ws =>
+                ws.id === workspaceId ? { ...ws, name } : ws
+            ));
+            await api.patch(`/workspace/${workspaceId}`, { work_space_name: name });
+        } catch (error) {
+            console.error("Failed to update workspace name:", error);
+        }
+    };
 
     return (
         <WorkspaceContext.Provider value={{
@@ -308,8 +389,12 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             selectChannel,
             updatePageContent,
             updatePageTitle,
+            updatePageIcon,
+            updateWorkspaceName,
             deletePage,
-            refreshWorkspaces
+            refreshWorkspaces,
+            getInvitations,
+            respondInvitation
         }}>
             {children}
         </WorkspaceContext.Provider>
