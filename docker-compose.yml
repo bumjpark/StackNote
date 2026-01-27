@@ -22,6 +22,16 @@ services:
       - ./voice-backend/app:/app/app
     restart: always
 
+  pdf-backend:
+    build: ./pdf-backend
+    container_name: stacknote-pdf-backend
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./pdf-backend/app:/app/app
+      - pdf_uploads:/app/uploads
+    restart: always
+
   frontend:
     build: ./frontend
     container_name: stacknote-frontend
@@ -48,3 +58,4 @@ services:
 
 volumes:
   db_data:
+  pdf_uploads:
