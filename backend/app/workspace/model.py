@@ -25,6 +25,23 @@ class WorkSpace(Base):
     is_deleted = Column(Boolean, default=False, nullable=False)
     
     user = relationship("app.auth.model.User", back_populates="workspaces")
+    
+    # Relationship for team members (Many-to-Many)
+    members = relationship(
+        "app.auth.model.User",
+        secondary="workspace_members",
+        back_populates="shared_workspaces"
+    )
+
+
+class WorkspaceMember(Base):
+    __tablename__ = "workspace_members"
+    
+    workspace_id = Column(Integer, ForeignKey("work_space.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("user.id"), primary_key=True)
+    role = Column(String(20), default="member") # 'admin', 'member'
+    status = Column(String(20), default="pending") # 'pending', 'accepted', 'declined'
+    joined_at = Column(DateTime, default=lambda: datetime.now(KST))
 
 
 class Page(Base):
@@ -39,7 +56,8 @@ class Page(Base):
     is_deleted = Column(Boolean, default=False, nullable=False)
 
     page_name = Column(String(50), nullable=False)
-    page_type = Column(String(20), nullable=True)  
+    page_type = Column(String(20), nullable=True)
+    icon = Column(String(10), nullable=True, default="📄")  
 
 
 class VoiceChannel(Base):

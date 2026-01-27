@@ -17,7 +17,10 @@ from .schema import (
     PageListCreateResponse,
     PageListUserResponse,
     VoiceChannelCreateQuery,
-    VoiceChannelCreateResponse
+    VoiceChannelCreateResponse,
+    WorkspaceInviteRequest,
+    WorkspaceUpdate,
+    PageUpdate
 )
 from . import service
 
@@ -194,3 +197,75 @@ def create_voice_channel(
         channel_id=channel.id,
         channel_name=channel.name
     )
+
+@router.post("/{workspace_id}/members", tags=["Workspace"])
+def invite_member(
+    workspace_id: int,
+    request: WorkspaceInviteRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    워크스페이스에 멤버 초대 (현재는 소유자만 가능)
+    """
+    return service.invite_member_to_workspace(db, workspace_id, request, request.inviter_id)
+
+@router.patch("/{workspace_id}", response_model=WorkspaceResponse)
+def update_workspace_name(
+    workspace_id: int,
+    updates: WorkspaceUpdate = Body(...),
+    db: Session = Depends(get_db)
+):
+    """
+    워크스페이스 이름 수정
+    """
+    ws = service.update_workspace(db, workspace_id, updates.work_space_name)
+    return WorkspaceResponse(
+        status="success",
+        user=WorkspaceUserResponse(
+            work_space_id=ws.id,
+            work_space_name=ws.work_space_name
+        )
+    )
+
+@router.patch("/pages/{page_id}")
+def update_page_details(
+    page_id: str,
+    updates: PageUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    페이지 정보 수정 (이름, 아이콘)
+    """
+    return service.update_page(db, page_id, updates.dict(exclude_unset=True))
+
+@router.get("/user/{user_id}/invitations", tags=["Workspace Invitation"])
+def get_invitations(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    유저가 받은 대기 중인 초대 목록 조회
+    """
+    return service.get_user_invitations(db, user_id)
+
+@router.post("/invitations/{workspace_id}/accept", tags=["Workspace Invitation"])
+def accept_invitation(
+    workspace_id: int,
+    user_id: int = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """
+    초대 수락
+    """
+    return service.respond_invitation(db, workspace_id, user_id, "accepted")
+
+@router.post("/invitations/{workspace_id}/decline", tags=["Workspace Invitation"])
+def decline_invitation(
+    workspace_id: int,
+    user_id: int = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """
+    초대 거절
+    """
+    return service.respond_invitation(db, workspace_id, user_id, "declined")

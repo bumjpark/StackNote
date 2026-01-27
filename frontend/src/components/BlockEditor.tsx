@@ -39,69 +39,88 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
     });
 
     // Fetch initial blocks from backend
-    useEffect(() => {
-        const fetchBlocks = async () => {
-            setIsLoading(true);
-            try {
-                const response = await api.get(`/pages/${pageId}/blocks`);
-                const dbBlocks = response.data;
+    // Fetch logic extracted for re-use
+    const fetchBlocks = React.useCallback(async (isPolling = false) => {
+        if (!pageId || !editor) return;
 
-                if (dbBlocks && dbBlocks.length > 0) {
-                    if (editor) {
-                        // Reconstruct hierarchy from flat list
-                        const reconstruct = (flat: any[]): Block[] => {
-                            const blockMap = new Map<string, any>();
-                            flat.forEach((b) => blockMap.set(b.id, { ...b }));
+        // Skip polling if we have unsaved changes to prevent overwriting
+        // or if we are currently editing (a primitive check could be saveStatus !== 'saved')
+        if (isPolling && saveStatusRef.current !== 'saved') {
+            return;
+        }
 
-                            const rootBlocks = flat.filter(b => !b.parent_id);
+        // If not polling (initial load), show loading
+        if (!isPolling) setIsLoading(true);
 
-                            // Sort root blocks by linked list
-                            const sortNodes = (nodes: any[]) => {
-                                const sorted: any[] = [];
-                                let current = nodes.find(n => !n.prev_block_id);
-                                if (!current && nodes.length > 0) current = nodes[0];
+        try {
+            const response = await api.get(`/pages/${pageId}/blocks`);
+            const dbBlocks = response.data;
 
-                                const visited = new Set();
-                                while (current && !visited.has(current.id)) {
-                                    visited.add(current.id);
-                                    sorted.push(current);
-                                    const nextId = current.next_block_id;
-                                    current = nodes.find(n => n.id === nextId);
-                                }
-                                // Add any that might have been missed due to broken links
-                                nodes.forEach(n => { if (!visited.has(n.id)) sorted.push(n); });
-                                return sorted;
-                            };
+            if (dbBlocks && dbBlocks.length > 0) {
+                // Map and reconstruct... (Reuse existing logic or abstract it)
+                // For now, duplicating the reconstruction logic here to keep it self-contained
+                // ideally this should be a helper function outside component
+                const reconstruct = (flat: any[]): Block[] => {
+                    const blockMap = new Map<string, any>();
+                    flat.forEach((b) => blockMap.set(b.id, { ...b }));
+                    const rootBlocks = flat.filter(b => !b.parent_id);
+                    const sortNodes = (nodes: any[]) => {
+                        const sorted: any[] = [];
+                        let current = nodes.find(n => !n.prev_block_id);
+                        if (!current && nodes.length > 0) current = nodes[0];
+                        const visited = new Set();
+                        while (current && !visited.has(current.id)) {
+                            visited.add(current.id);
+                            sorted.push(current);
+                            const nextId = current.next_block_id;
+                            current = nodes.find(n => n.id === nextId);
+                        }
+                        nodes.forEach(n => { if (!visited.has(n.id)) sorted.push(n); });
+                        return sorted;
+                    };
+                    const buildTree = (nodes: any[]): Block[] => {
+                        return nodes.map(n => ({
+                            id: n.id,
+                            type: n.type,
+                            props: n.props,
+                            content: n.content,
+                            children: buildTree((n.children_ids || [])
+                                .map((cid: string) => blockMap.get(cid))
+                                .filter((c: any) => c !== undefined))
+                        } as Block));
+                    };
+                    return buildTree(sortNodes(rootBlocks));
+                };
 
-                            const buildTree = (nodes: any[]): Block[] => {
-                                return nodes.map(n => ({
-                                    id: n.id,
-                                    type: n.type,
-                                    props: n.props,
-                                    content: n.content,
-                                    children: buildTree((n.children_ids || [])
-                                        .map((cid: string) => blockMap.get(cid))
-                                        .filter((c: any) => c !== undefined))
-                                } as Block));
-                            };
+                const initialBlocks = reconstruct(dbBlocks);
 
-                            return buildTree(sortNodes(rootBlocks));
-                        };
-
-                        const initialBlocks = reconstruct(dbBlocks);
-                        editor.replaceBlocks(editor.document, initialBlocks);
-                    }
+                // Deep comparison to avoid unnecessary re-renders or cursor jumps
+                if (JSON.stringify(initialBlocks) !== JSON.stringify(editor.document)) {
+                    editor.replaceBlocks(editor.document, initialBlocks);
+                    if (!isPolling) setBlocks(initialBlocks); // Sync local state only on fresh load
                 }
-            } catch (error) {
-                console.error("Failed to fetch blocks", error);
-            } finally {
-                setIsLoading(false);
-                setSaveStatus('saved');
             }
-        };
-
-        fetchBlocks();
+        } catch (error) {
+            console.error("Failed to fetch blocks", error);
+        } finally {
+            if (!isPolling) setIsLoading(false);
+            if (!isPolling) setSaveStatus('saved');
+        }
     }, [pageId, editor]);
+
+    // Initial Fetch
+    useEffect(() => {
+        fetchBlocks(false);
+    }, [fetchBlocks]);
+
+    // Polling Effect
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchBlocks(true);
+        }, 5000); // Poll every 5 seconds
+
+        return () => clearInterval(interval);
+    }, [fetchBlocks]);
 
 
     // Save logic

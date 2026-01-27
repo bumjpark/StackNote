@@ -25,7 +25,7 @@ const WorkspaceView: React.FC = () => {
             <div style={{ maxWidth: '900px', margin: '0 auto', padding: '3rem 4rem' }}>
                 {/* Cover / Icon Area (Placeholder) */}
                 <div style={{ height: '100px', marginBottom: '2rem', display: 'flex', alignItems: 'end' }}>
-                    <span style={{ fontSize: '4rem' }}>📄</span>
+                    <span style={{ fontSize: '4rem' }}>{currentPage.icon || '📄'}</span>
                 </div>
 
                 {/* Title Input */}
