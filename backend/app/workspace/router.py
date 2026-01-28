@@ -1,19 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, UploadFile, File
 from typing import List, Optional
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
-from .model import WorkSpace, Page
+from shared.database.core.database import get_db
+from shared.database.models.workspace import WorkSpace, Page
 from . import service
-from .schema import (
+from shared.schemas.workspace import (
     WorkspaceRequest,
     WorkspaceResponse,
     WorkspaceUserResponse,
-    BlockCreate,
-    BlockUpdate,
-    BlockResponse,
     PageListCreateRequest,
-    PageListCreateResponse,
     PageListCreateResponse,
     PageListUserResponse,
     VoiceChannelCreateQuery,
@@ -23,6 +19,8 @@ from .schema import (
     PageUpdate,
     WorkspaceMemberResponse
 )
+from shared.schemas.block import BlockCreate, BlockUpdate, BlockResponse
+from . import pdf_service # [NEW]
 
 router = APIRouter(
     prefix="/workspace",
@@ -58,6 +56,19 @@ def create_workspace(
             work_space_name=workspace.work_space_name
         )
     )
+
+@router.post("/pages/upload-pdf")
+async def upload_pdf_and_create_page(
+    workspace_id: int = Body(...),
+    user_id: int = Body(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    PDF 파일을 업로드하고 분석하여 새로운 페이지를 생성합니다.
+    (PDF Backend로 분석 위임 -> 결과 받아 DB 저장)
+    """
+    return await pdf_service.process_pdf_upload(db, workspace_id, user_id, file)
 
 
 @router.get("/user/{user_id}")

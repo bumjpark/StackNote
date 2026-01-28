@@ -1,10 +1,10 @@
-from .model import User
-from .schema import UserPostRequest
+from shared.database.models.user import User
+from shared.schemas.auth import UserPostRequest
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from datetime import datetime
 from app.workspace import service as WorkspaceService
-from app.workspace.schema import WorkspaceRequest
+from shared.schemas.workspace import WorkspaceRequest
 
 def create_user (new_user: UserPostRequest, db: Session):
     user = User(

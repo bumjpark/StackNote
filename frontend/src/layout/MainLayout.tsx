@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import VoiceManager from '../features/VoiceChat/VoiceManager';
 import { useWorkspace } from '../context/WorkspaceContext';
@@ -14,7 +14,9 @@ import {
     User,
     Trash2,
     Bell,
-    X
+    X,
+    FileUp,
+    Loader2
 } from 'lucide-react';
 
 interface MainLayoutProps {
@@ -115,12 +117,46 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         respondInvitation,
         updateWorkspaceName,
         updatePageIcon,
-        fetchMembers
+        fetchMembers,
+        uploadPdf
     } = useWorkspace();
 
     const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
     const [invitations, setInvitations] = useState<any[]>([]);
     const [showNotifications, setShowNotifications] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadingFileName, setUploadingFileName] = useState("");
+
+    // File Upload Ref
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleUploadClick = () => {
+        if (!currentWorkspace) {
+            alert("No workspace selected");
+            return;
+        }
+        fileInputRef.current?.click();
+    };
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file && currentWorkspace) {
+            try {
+                setUploadingFileName(file.name);
+                setIsUploading(true);
+                await uploadPdf(currentWorkspace.id, file);
+            } catch (error) {
+                console.error("Upload failed", error);
+            } finally {
+                setIsUploading(false);
+                setUploadingFileName("");
+                // Reset input
+                if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                }
+            }
+        }
+    };
 
     useEffect(() => {
         const checkInvitations = async () => {
@@ -167,7 +203,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     };
 
     return (
-        <div className="flex h-screen w-full overflow-hidden bg-bg-primary text-text-primary" style={{ display: 'flex', height: '100vh', width: '100%', overflow: 'hidden' }}>
+        <div className="flex h-screen w-full overflow-hidden bg-bg-primary text-text-primary" style={{ display: 'flex', height: '100vh', width: '100%', overflow: 'hidden', position: 'relative' }}>
+
 
             {/* Sidebar */}
             <aside style={{
@@ -339,6 +376,15 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     </div>
                 )}
 
+                {/* Hidden File Input */}
+                <input
+                    type="file"
+                    ref={fileInputRef}
+                    style={{ display: 'none' }}
+                    accept=".pdf"
+                    onChange={handleFileChange}
+                />
+
                 {/* Categories */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0' }}>
 
@@ -346,8 +392,33 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     <div style={{ marginBottom: '1.5rem' }}>
                         <div style={{ padding: '0 0.75rem 0.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-secondary)' }}>
                             <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>PRIVATE</span>
-                            <Plus size={14} style={{ cursor: 'pointer' }} onClick={() => currentWorkspace && createPage(currentWorkspace.id, 'Untitled Private', 'private')} />
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <div title="Import PDF" onClick={handleUploadClick} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                                    <FileUp size={14} />
+                                </div>
+                                <div title="Create Page" onClick={() => currentWorkspace && createPage(currentWorkspace.id, 'Untitled Private', 'private')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                                    <Plus size={14} />
+                                </div>
+                            </div>
                         </div>
+                        {isUploading && (
+                            <div
+                                style={{
+                                    padding: '0.4rem 0.75rem',
+                                    fontSize: '0.9rem',
+                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                    background: 'rgba(255,255,255,0.02)',
+                                    color: 'var(--text-secondary)',
+                                    opacity: 0.7,
+                                    cursor: 'not-allowed'
+                                }}
+                            >
+                                <Loader2 size={14} className="spinner" />
+                                <span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1 }}>
+                                    {uploadingFileName.replace(".pdf", "")}
+                                </span>
+                            </div>
+                        )}
                         {currentWorkspace?.privatePages.map(page => (
                             <div
                                 key={page.id}

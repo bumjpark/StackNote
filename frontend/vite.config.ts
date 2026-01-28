@@ -19,6 +19,11 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api/, ''),
         secure: false,
       },
+      '/uploads': {
+        target: 'http://backend:8000',
+        changeOrigin: true,
+        secure: false,
+      },
       '/ws': {
         target: 'ws://voice-backend:8000',
         ws: true,

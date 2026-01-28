@@ -38,28 +38,28 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
         initialContent: initialContent,
     });
 
+    // Ref to prevent save loop during fetch
+    const isFetchingRef = useRef<boolean>(false);
+
     // Fetch initial blocks from backend
-    // Fetch logic extracted for re-use
     const fetchBlocks = React.useCallback(async (isPolling = false) => {
         if (!pageId || !editor) return;
 
         // Skip polling if we have unsaved changes to prevent overwriting
-        // or if we are currently editing (a primitive check could be saveStatus !== 'saved')
         if (isPolling && saveStatusRef.current !== 'saved') {
             return;
         }
 
-        // If not polling (initial load), show loading
         if (!isPolling) setIsLoading(true);
+
+        // Mark as fetching start
+        isFetchingRef.current = true;
 
         try {
             const response = await api.get(`/pages/${pageId}/blocks`);
             const dbBlocks = response.data;
 
             if (dbBlocks && dbBlocks.length > 0) {
-                // Map and reconstruct... (Reuse existing logic or abstract it)
-                // For now, duplicating the reconstruction logic here to keep it self-contained
-                // ideally this should be a helper function outside component
                 const reconstruct = (flat: any[]): Block[] => {
                     const blockMap = new Map<string, any>();
                     flat.forEach((b) => blockMap.set(b.id, { ...b }));
@@ -82,7 +82,7 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                         return nodes.map(n => ({
                             id: n.id,
                             type: n.type,
-                            props: n.props,
+                            props: n.props || {},
                             content: n.content,
                             children: buildTree((n.children_ids || [])
                                 .map((cid: string) => blockMap.get(cid))
@@ -92,17 +92,61 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                     return buildTree(sortNodes(rootBlocks));
                 };
 
-                const initialBlocks = reconstruct(dbBlocks);
+                let initialBlocks = reconstruct(dbBlocks);
 
-                // Deep comparison to avoid unnecessary re-renders or cursor jumps
+                const nestBlocksByHeaders = (blocks: Block[]): Block[] => {
+                    const root: Block[] = [];
+                    const stack: { block: any, level: number }[] = [];
+
+                    blocks.forEach((block) => {
+                        const b = { ...block, children: block.children ? [...block.children] : [] } as any;
+                        let level = 99;
+                        if (b.type === "heading") level = b.props?.level || 1;
+                        if (b.type === "divider") level = 0;
+
+                        while (stack.length > 0) {
+                            const parent = stack[stack.length - 1];
+                            if (parent.level >= level && parent.level !== 99) {
+                                stack.pop();
+                            } else {
+                                break;
+                            }
+                        }
+
+                        if (stack.length > 0) {
+                            const parentBlock = stack[stack.length - 1].block;
+                            if (!parentBlock.children) parentBlock.children = [];
+                            parentBlock.children.push(b);
+                        } else {
+                            root.push(b);
+                        }
+
+                        if (b.type === "heading") {
+                            stack.push({ block: b, level: level });
+                        }
+                    });
+                    return root;
+                };
+
+                try {
+                    initialBlocks = nestBlocksByHeaders(initialBlocks);
+                } catch (e) {
+                    console.error("Nesting failed", e);
+                }
+
                 if (JSON.stringify(initialBlocks) !== JSON.stringify(editor.document)) {
                     editor.replaceBlocks(editor.document, initialBlocks);
-                    if (!isPolling) setBlocks(initialBlocks); // Sync local state only on fresh load
+                    if (!isPolling) setBlocks(initialBlocks);
                 }
             }
         } catch (error) {
             console.error("Failed to fetch blocks", error);
         } finally {
+            // Reset fetching status AFTER a slight delay to allow onChange to fire and be ignored
+            setTimeout(() => {
+                isFetchingRef.current = false;
+            }, 50);
+
             if (!isPolling) setIsLoading(false);
             if (!isPolling) setSaveStatus('saved');
         }
@@ -117,7 +161,7 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
     useEffect(() => {
         const interval = setInterval(() => {
             fetchBlocks(true);
-        }, 5000); // Poll every 5 seconds
+        }, 30000); // Poll every 30 seconds
 
         return () => clearInterval(interval);
     }, [fetchBlocks]);
@@ -241,22 +285,94 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                     box-shadow: none !important;
                     border: none !important;
                 }
+                
+                /* [Indent Line Removal] Remove the vertical line on nested blocks */
+                .bn-block-outer::before {
+                    border-left: none !important;
+                }
                 .bn-editor {
                     background-color: transparent !important;
                     padding-inline: 0 !important;
+                    line-height: 1.65 !important;
+                    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol" !important;
                 }
                 .bn-block-content {
-                    color: var(--text-primary) !important;
+                    color: #FFFFFF !important; /* 본문 완전 순백색 적용 (고대비) */
+                    font-size: 16px !important;
+                    font-weight: 400 !important;
                 }
+                
+                /* 블록 간 수직 여백 확대 (노션 클론 핵심) */
+                .bn-block-outer {
+                    margin-top: 0.6rem !important;
+                    margin-bottom: 0.6rem !important;
+                }
+
+                /* 헤딩 블록: 압도적인 위계 및 여백 (선택자 수정) */
+                .bn-block-content[data-content-type="heading"] {
+                    color: #FFFFFF !important;
+                    letter-spacing: -0.012em !important;
+                }
+                
+                .bn-block-content[data-content-type="heading"][data-level="1"] {
+                    font-size: 2.25rem !important;
+                    font-weight: 700 !important;
+                    line-height: 1.2 !important;
+                    margin-top: 4.5rem !important; /* 극단적인 상단 여백으로 섹션 구분 */
+                    margin-bottom: 0.75rem !important;
+                }
+                .bn-block-content[data-content-type="heading"][data-level="2"] {
+                    font-size: 1.75rem !important;
+                    font-weight: 600 !important;
+                    line-height: 1.3 !important;
+                    margin-top: 3.5rem !important; /* 넉넉한 상단 여백 */
+                    margin-bottom: 0.5rem !important;
+                }
+                .bn-block-content[data-content-type="heading"][data-level="3"] {
+                    font-size: 1.35rem !important;
+                    font-weight: 600 !important;
+                    line-height: 1.4 !important;
+                    margin-top: 2.5rem !important;
+                    margin-bottom: 0.4rem !important;
+                }
+
+                /* 페이지 구분선 (Divider) 정밀 스타일링 (선택자 수정) */
+                .bn-block-content[data-content-type="divider"] {
+                    margin-top: 4.5rem !important;
+                    margin-bottom: 4.5rem !important;
+                    height: 1px !important;
+                    background-color: rgba(255, 255, 255, 0.2) !important;
+                    border: none !important;
+                    width: 100% !important;
+                }
+                
+                /* 문단 간 여백 */
+                .bn-block-content[data-content-type="paragraph"] {
+                    margin-bottom: 0.3rem !important;
+                }
+
+                /* 리스트 아이템 사이 간격 조정 */
+                .bn-block-content[data-content-type*="ListItem"] {
+                    margin-top: 0.2rem !important;
+                    margin-bottom: 0.2rem !important;
+                }
+
                 .bn-block-outer:hover .bn-side-menu {
                     opacity: 1;
+                }
+                
+                /* Selection */
+                ::selection {
+                    background: rgba(35, 131, 226, 0.28);
                 }
             `}</style>
             <BlockNoteView
                 editor={editor}
                 onChange={() => {
-                    setBlocks(editor.document);
-                    setSaveStatus('dirty');
+                    if (!isFetchingRef.current) {
+                        setBlocks(editor.document);
+                        setSaveStatus('dirty');
+                    }
                 }}
                 theme="dark"
                 style={{

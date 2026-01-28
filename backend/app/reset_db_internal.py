@@ -1,4 +1,4 @@
-from app.core.database import engine, Base
+from shared.database.core.database import engine, Base
 
 def reset_db():
     print("Dropping all tables...")

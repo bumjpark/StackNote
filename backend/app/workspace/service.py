@@ -4,9 +4,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 import uuid
 
-from app.auth.model import User
-from .model import WorkSpace, Page, VoiceChannel, WorkspaceMember
-from .schema import WorkspaceRequest, BlockCreate, BlockUpdate, PageListCreateRequest, VoiceChannelCreateQuery, WorkspaceInviteRequest
+from shared.database.models.user import User
+from shared.database.models.workspace import WorkSpace, Page, VoiceChannel, WorkspaceMember
+from shared.schemas.workspace import WorkspaceRequest, PageListCreateRequest, VoiceChannelCreateQuery, WorkspaceInviteRequest
+from shared.schemas.block import BlockCreate, BlockUpdate
 from fastapi import HTTPException
 from .constants import DEFAULT_PAGES
 def create_workspace(

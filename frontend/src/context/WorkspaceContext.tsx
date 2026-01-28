@@ -54,6 +54,7 @@ interface WorkspaceContextType {
     getInvitations: () => Promise<any[]>;
     respondInvitation: (workspaceId: string, accept: boolean) => Promise<void>;
     fetchMembers: (workspaceId: string) => Promise<void>;
+    uploadPdf: (workspaceId: string, file: File) => Promise<void>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -434,6 +435,51 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
         }
     }, []);
 
+    const uploadPdf = async (workspaceId: string, file: File) => {
+        try {
+            const userId = localStorage.getItem('user_id');
+            if (!userId) {
+                alert("Please login first");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('workspace_id', workspaceId);
+            formData.append('user_id', userId);
+            formData.append('file', file);
+
+            const response = await api.post('/workspace/pages/upload-pdf', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+
+            // Response format expected: { status: "success", page_id: 123, ... }
+            if (response.data.status === 'success') {
+                const newPageId = String(response.data.page_id);
+                // const newTitle = file.name.replace('.pdf', '');
+
+                // Assuming it's created as a private page type="doc" (treated as private usually?)
+                // Or verify backend logic. Backend sets page_type="doc".
+                // We need to decide where to put it. Let's assume private for now or refresh?
+                // Actually backend process_pdf_upload creates it.
+                // It sets page_type="doc". 
+                // Let's assume it's like a private page or we re-fetch workspace.
+                // Safest is to refetch workspace to get correct structure.
+                await refreshWorkspaces();
+
+                // Select the new page
+                // Need to find it after refresh. 
+                // Since refresh is async, we can set ID after.
+                // Ideally refresh waits.
+                setCurrentPageId(newPageId);
+            }
+        } catch (error) {
+            console.error("Failed to upload PDF:", error);
+            alert("Failed to upload PDF. Please try again.");
+        }
+    };
+
     return (
         <WorkspaceContext.Provider value={{
             workspaces,
@@ -456,7 +502,8 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             refreshWorkspaces,
             getInvitations,
             respondInvitation,
-            fetchMembers
+            fetchMembers,
+            uploadPdf
         }}>
             {children}
         </WorkspaceContext.Provider>
