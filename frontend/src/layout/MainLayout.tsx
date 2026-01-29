@@ -108,7 +108,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         createWorkspace,
         createPage,
         createChannel,
-        inviteMember,
         selectWorkspace,
         selectPage,
         selectChannel,
@@ -118,7 +117,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         updateWorkspaceName,
         updatePageIcon,
         fetchMembers,
-        uploadPdf
+        inviteToPage,
+        fetchPageMembers,
+        uploadPdf,
+        deleteWorkspace
     } = useWorkspace();
 
     const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
@@ -126,6 +128,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const [showNotifications, setShowNotifications] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [uploadingFileName, setUploadingFileName] = useState("");
+    const [pageMembers, setPageMembers] = useState<any[]>([]); // [NEW]
 
     // File Upload Ref
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -175,14 +178,38 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         }
     }, [currentWorkspace?.id, fetchMembers]);
 
-    const handleAccept = async (workspaceId: string) => {
-        await respondInvitation(workspaceId, true);
-        setInvitations(prev => prev.filter(inv => inv.workspace_id !== parseInt(workspaceId)));
+    // Fetch page members when current page changes
+    useEffect(() => {
+        if (currentPage?.id && currentPage.type === 'team') {
+            fetchPageMembers(currentPage.id).then(setPageMembers);
+        } else {
+            setPageMembers([]);
+        }
+    }, [currentPage?.id, fetchPageMembers]);
+
+    const handleAccept = async (id: string, type: string = 'workspace', _workspaceId?: string) => {
+        await respondInvitation(id, true, type);
+
+        // For workspace invitations, switch to the new workspace
+        // For page invitations, the page is added to the CURRENT workspace (target), so don't switch
+        if (type === 'workspace') {
+            selectWorkspace(id);
+        }
+        // Note: For page invitations, the page should now appear in the current workspace's team pages
+        // after refreshWorkspaces(true) is called inside respondInvitation
+
+        setInvitations(prev => prev.filter(inv => {
+            const invId = inv.type === 'page' ? inv.id : String(inv.workspace_id);
+            return invId !== id;
+        }));
     };
 
-    const handleDecline = async (workspaceId: string) => {
-        await respondInvitation(workspaceId, false);
-        setInvitations(prev => prev.filter(inv => inv.workspace_id !== parseInt(workspaceId)));
+    const handleDecline = async (id: string, type: string = 'workspace') => {
+        await respondInvitation(id, false, type);
+        setInvitations(prev => prev.filter(inv => {
+            const invId = inv.type === 'page' ? inv.id : String(inv.workspace_id);
+            return invId !== id;
+        }));
     };
 
     const handleLogout = () => {
@@ -195,9 +222,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const handleAddWorkspace = () => {
         const name = prompt('Enter new workspace name:', 'New Workspace');
         if (name) {
-            const typeInput = prompt('Enter workspace type (private/team):', 'team');
-            const type = (typeInput?.toLowerCase() === 'team') ? 'team' : 'private';
-            createWorkspace(name, type);
+            createWorkspace(name);
             setShowWorkspaceMenu(false);
         }
     };
@@ -299,30 +324,36 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>No pending invitations.</div>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                                {invitations.map((inv: any) => (
-                                    <div key={inv.workspace_id} style={{ background: 'var(--bg-primary)', padding: '0.75rem', borderRadius: '6px' }}>
-                                        <div style={{ fontSize: '0.85rem', marginBottom: '0.25rem' }}>
-                                            Join <strong>{inv.workspace_name}</strong>?
+                                {invitations.map((inv: any) => {
+                                    const isPage = inv.type === 'page';
+                                    const id = isPage ? inv.id : String(inv.workspace_id);
+                                    const name = isPage ? inv.name : inv.workspace_name;
+
+                                    return (
+                                        <div key={id} style={{ background: 'var(--bg-primary)', padding: '0.75rem', borderRadius: '6px' }}>
+                                            <div style={{ fontSize: '0.85rem', marginBottom: '0.25rem' }}>
+                                                Join <strong>{name}</strong> {isPage ? '(Page)' : ''}?
+                                            </div>
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                                                {isPage ? `In workspace #${inv.workspace_id}` : `Invited by User #${inv.inviter_id}`}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                <button
+                                                    onClick={() => handleAccept(id, isPage ? 'page' : 'workspace', String(inv.workspace_id))}
+                                                    style={{ flex: 1, padding: '0.3rem', background: 'var(--accent-primary)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                                                >
+                                                    <Check size={12} /> Accept
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDecline(id, isPage ? 'page' : 'workspace')}
+                                                    style={{ flex: 1, padding: '0.3rem', background: '#ef4444', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                                                >
+                                                    <X size={12} /> Decline
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-                                            Invited by User #{inv.inviter_id}
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                            <button
-                                                onClick={() => handleAccept(String(inv.workspace_id))}
-                                                style={{ flex: 1, padding: '0.3rem', background: 'var(--accent-primary)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
-                                            >
-                                                <Check size={12} /> Accept
-                                            </button>
-                                            <button
-                                                onClick={() => handleDecline(String(inv.workspace_id))}
-                                                style={{ flex: 1, padding: '0.3rem', background: '#ef4444', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
-                                            >
-                                                <X size={12} /> Decline
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
@@ -345,24 +376,78 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         {workspaces.map(ws => (
                             <div
                                 key={ws.id}
-                                onClick={() => { selectWorkspace(ws.id); setShowWorkspaceMenu(false); }}
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '0.5rem',
+                                    justifyContent: 'space-between',
                                     padding: '0.5rem',
                                     borderRadius: '4px',
                                     cursor: 'pointer',
                                     background: ws.id === currentWorkspace?.id ? 'rgba(255,255,255,0.05)' : 'transparent',
-                                    color: ws.id === currentWorkspace?.id ? 'item-active' : 'var(--text-primary)'
+                                    color: ws.id === currentWorkspace?.id ? '#fff' : 'rgba(255,255,255,0.7)',
+                                    marginBottom: '2px'
                                 }}
-                                className="hover:bg-white/5"
+                                className="workspace-item"
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = ws.id === currentWorkspace?.id ? 'rgba(255,255,255,0.05)' : 'transparent';
+                                }}
                             >
-                                <div style={{ width: '16px', height: '16px', borderRadius: '2px', background: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '8px', color: '#000' }}>
-                                    {ws.name.substring(0, 1).toUpperCase()}
+                                <div
+                                    style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}
+                                    onClick={() => {
+                                        selectWorkspace(ws.id);
+                                        setShowWorkspaceMenu(false);
+                                    }}
+                                >
+                                    <div style={{
+                                        width: '24px',
+                                        height: '24px',
+                                        borderRadius: '4px',
+                                        background: '#37352f',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '12px',
+                                        fontWeight: '600',
+                                        color: '#fff'
+                                    }}>
+                                        {ws.name.substring(0, 1)}
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                        <span style={{
+                                            fontSize: '0.9rem',
+                                            fontWeight: ws.id === currentWorkspace?.id ? '600' : '400'
+                                        }}>
+                                            {ws.name}
+                                        </span>
+                                    </div>
                                 </div>
-                                <span style={{ fontSize: '0.85rem', flex: 1 }}>{ws.name}</span>
-                                {ws.id === currentWorkspace?.id && <Check size={14} />}
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (confirm(`Are you sure you want to delete workspace "${ws.name}"?`)) {
+                                            deleteWorkspace(ws.id);
+                                        }
+                                    }}
+                                    style={{
+                                        border: 'none',
+                                        background: 'transparent',
+                                        color: '#999',
+                                        cursor: 'pointer',
+                                        padding: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        borderRadius: '4px'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.color = '#ff6b6b'}
+                                    onMouseLeave={(e) => e.currentTarget.style.color = '#999'}
+                                >
+                                    <Trash2 size={14} />
+                                </button>
                             </div>
                         ))}
                         <div style={{ borderTop: '1px solid var(--border-color)', margin: '0.5rem 0' }}></div>
@@ -470,19 +555,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         <div style={{ padding: '0 0.75rem 0.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-secondary)' }}>
                             <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>TEAM PAGES</span>
                             <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                <div
-                                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                                    onClick={() => {
-                                        if (!currentWorkspace) return;
-                                        const email = prompt("초대할 팀원의 이메일을 입력하세요:");
-                                        if (email) {
-                                            inviteMember(currentWorkspace.id, email);
-                                        }
-                                    }}
-                                    title="Invite Member"
-                                >
-                                    <UserPlus size={14} />
-                                </div>
+                                {/* Global Invite Removed */}
                                 <div
                                     style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                                     onClick={() => currentWorkspace && createPage(currentWorkspace.id, 'Untitled Team Page', 'team')}
@@ -520,6 +593,18 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                     onClick={() => selectPage(page.id)}
                                     style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1, cursor: 'pointer' }}
                                 >{page.title || 'Untitled'}</span>
+                                <div
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        const email = prompt(`Invite to "${page.title}" page: \nEnter email:`);
+                                        if (email) inviteToPage(page.id, email);
+                                    }}
+                                    style={{ cursor: 'pointer', opacity: 0.5, marginRight: '4px', display: 'flex', alignItems: 'center' }}
+                                    className="hover:opacity-100 hover:text-accent-primary"
+                                    title="Invite to Page"
+                                >
+                                    <UserPlus size={14} />
+                                </div>
                                 <Trash2
                                     size={14}
                                     onClick={(e) => {
@@ -538,34 +623,14 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         )}
                     </div>
 
-                    {/* Voice Channels (Visible in Team Workspace OR when viewing a Team Page) */}
-                    {(currentWorkspace?.type === 'team' || currentPage?.type === 'team' || currentWorkspace?.voiceChannels.some(vc => vc.id === currentChannel?.id)) && (
-                        <div style={{ marginBottom: '1.5rem' }}>
-                            <div style={{ padding: '0 0.75rem 0.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-secondary)' }}>
-                                <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>VOICE CHANNELS</span>
-                                <Plus size={14} style={{ cursor: 'pointer' }} onClick={() => {
-                                    const name = prompt('Channel Name:');
-                                    if (name && currentWorkspace) createChannel(currentWorkspace.id, name);
-                                }} />
-                            </div>
-                            {currentWorkspace?.voiceChannels.map(channel => (
-                                <VoiceChannelItem
-                                    key={channel.id}
-                                    channel={channel}
-                                    isActive={channel.id === currentChannel?.id}
-                                    onSelect={() => selectChannel(channel.id)}
-                                />
-                            ))}
-                        </div>
-                    )}
 
-                    {/* Members List */}
-                    {(currentWorkspace?.type === 'team' || currentPage?.type === 'team' || currentWorkspace?.voiceChannels.some(vc => vc.id === currentChannel?.id)) && (
+                    {/* Members List (Page Specific) */}
+                    {(currentPage?.type === 'team') && (
                         <div style={{ marginBottom: '1.5rem' }}>
                             <div style={{ padding: '0 0.75rem 0.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-secondary)' }}>
-                                <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>MEMBERS</span>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>PAGE MEMBERS</span>
                             </div>
-                            {currentWorkspace?.members?.map(member => (
+                            {pageMembers.map(member => (
                                 <div
                                     key={member.id}
                                     style={{

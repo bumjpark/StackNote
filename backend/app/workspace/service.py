@@ -5,8 +5,8 @@ from sqlalchemy import func
 import uuid
 
 from shared.database.models.user import User
-from shared.database.models.workspace import WorkSpace, Page, VoiceChannel, WorkspaceMember
-from shared.schemas.workspace import WorkspaceRequest, PageListCreateRequest, VoiceChannelCreateQuery, WorkspaceInviteRequest
+from shared.database.models.workspace import WorkSpace, Page, VoiceChannel, WorkspaceMember, PageMember
+from shared.schemas.workspace import WorkspaceRequest, PageListCreateRequest, VoiceChannelCreateQuery, WorkspaceInviteRequest, PageInviteRequest
 from shared.schemas.block import BlockCreate, BlockUpdate
 from fastapi import HTTPException
 from .constants import DEFAULT_PAGES
@@ -19,7 +19,6 @@ def create_workspace(
     """
     workspace = WorkSpace(
         user_id=workspace_data.user_id,
-        page_type=workspace_data.page_type,
         work_space_name=workspace_data.work_space_name,
     )
     db.add(workspace)
@@ -50,55 +49,74 @@ def get_workspaces_by_user(db: Session, user_id: int):
             WorkSpace.id.in_(member_workspace_ids),
             WorkSpace.is_deleted == False
         ).all()
-        
+
+    # 3. Workspaces where user is an accepted PageMember
+    # [REMOVED] Logic to include workspaces solely based on page membership.
+    # We now strictly follow the rule: Switcher only shows OWNED workspaces.
+    # Shared pages must be "mounted" to one of the owned workspaces.
+    
     # Combine and distinct by ID
-    all_workspaces_map = {ws.id: ws for ws in owned_workspaces + member_workspaces}
+    all_workspaces_list = owned_workspaces # + member_workspaces + page_member_workspaces
+    all_workspaces_map = {ws.id: ws for ws in all_workspaces_list}
     workspaces = list(all_workspaces_map.values())
     results = []
     for ws in workspaces:
-         # 해당 워크스페이스의 페이지 조회
-        pages = db.query(Page).filter(
+        # 1. Fetch pages OWNED by user in this workspace
+        owned_pages = db.query(Page).filter(
             Page.workspace_id == ws.id,
+            Page.user_id == user_id,
             Page.is_deleted == False
         ).all()
         
-        # 페이지 분류 (private/team) - 현재 모델엔 구분 컬럼이 없어서 workspace type을 따르거나 별도 로직 필요
-        # 임시로 워크스페이스 타입에 따라 전체 페이지를 넣음
+        # 2. Fetch pages SHARED to this workspace (Mounted)
+        # Find PageMember records where target_workspace_id == ws.id AND status == 'accepted'
+        mounted_memberships = db.query(PageMember).filter(
+            PageMember.target_workspace_id == ws.id,
+            PageMember.status == 'accepted'
+        ).all()
+        
+        mounted_page_ids = [pm.page_id for pm in mounted_memberships]
+        mounted_pages = []
+        if mounted_page_ids:
+            mounted_pages = db.query(Page).filter(
+                Page.id.in_(mounted_page_ids),
+                Page.is_deleted == False
+            ).all()
+            
+        all_pages = owned_pages + mounted_pages
+        # Remove duplicates if any (though logic shouldn't allow overlap easily)
+        unique_pages = {p.id: p for p in all_pages}.values()
+
+        is_ws_owner = (ws.user_id == user_id)
         
         ws_data = {
             "id": str(ws.id),
             "name": ws.work_space_name,
-            "type": ws.page_type, # private or team
             "privatePages": [],
             "teamPages": [],
-            "voiceChannels": [] # Voice channels 구현 시 추가
+            "voiceChannels": []
         }
         
-        for p in pages:
-            # Determine page type based on p.page_type
-            # Default to workspace type if p.page_type is missing (backward compatibility)
-            current_type = p.page_type if p.page_type else ws.page_type
-            
-            # Normalize type string (handle "PRIVATE", "private", "TEAM", "team")
+        for p in unique_pages:
+            current_type = p.page_type if p.page_type else "private"
             is_team = current_type in ["TEAM", "team"]
             final_type = "team" if is_team else "private"
-
+            
             page_data = {
                 "id": str(p.id),
                 "title": p.page_name,
                 "icon": p.icon,
-                "content": "", # 목록 조회시엔 컨텐츠 제외 (가벼운 응답)
-                "type": final_type
+                "content": "",
+                "type": final_type,
+                "is_owner": (p.user_id == user_id) # Flag to identify ownership
             }
             
             if final_type == "private":
-                # Only show private pages if they belong to the requesting user
-                if p.user_id == user_id:
-                    ws_data["privatePages"].append(page_data)
+                ws_data["privatePages"].append(page_data)
             else:
                 ws_data["teamPages"].append(page_data)
                 
-        # Fetch Voice Channels
+        # Voice Channels (Simple fetch for now, can be refined to page-based)
         voice_channels = db.query(VoiceChannel).filter(
             VoiceChannel.workspace_id == ws.id,
             VoiceChannel.is_deleted == False
@@ -108,7 +126,8 @@ def get_workspaces_by_user(db: Session, user_id: int):
             {
                 "id": vc.id,
                 "name": vc.name,
-                "users": [] # Realtime user status is handled via WebSocket/Redis usually, defaulting to empty
+                "page_id": vc.page_id,
+                "users": []
             }
             for vc in voice_channels
         ]
@@ -125,14 +144,7 @@ def delete_workspace(
     """
     워크스페이스 삭제 (soft delete)
     """
-    workspace = (
-        db.query(WorkSpace)
-        .filter(
-            WorkSpace.id == workspace_id,
-            WorkSpace.is_deleted == False
-        )
-        .first()
-    )
+    workspace = db.query(WorkSpace).filter(WorkSpace.id == workspace_id).first()
     if not workspace:
         return None
 
@@ -175,6 +187,16 @@ def create_default_pages(
             )
             db.add(new_page)
             db.flush()  # id 생성
+            
+            # [NEW] Add creator as the first member of the page
+            owner_member = PageMember(
+                page_id=new_page.id,
+                user_id=user_id,
+                role="owner",
+                status="accepted"
+            )
+            db.add(owner_member)
+            
             created_page_ids.append(new_page.id)
     
     db.commit()
@@ -266,6 +288,16 @@ def create_page_list(
         )
         db.add(page)
         db.flush()  # id 생성
+        
+        # [NEW] Add creator as the first member of the page
+        owner_member = PageMember(
+            page_id=page.id,
+            user_id=page_list_data.user_id,
+            role="owner",
+            status="accepted"
+        )
+        db.add(owner_member)
+        
         created_page_ids.append(page.id)
 
     db.commit()
@@ -337,8 +369,15 @@ def create_voice_channel(
     if not (is_owner or is_member):
         raise HTTPException(status_code=403, detail="Not authorized to create voice channels in this workspace")
 
+    # If page_id is provided, verify it belongs to workspace
+    if query.page_id:
+        page = db.query(Page).filter(Page.id == query.page_id, Page.workspace_id == query.work_space_id).first()
+        if not page:
+            raise HTTPException(status_code=404, detail="Page not found in this workspace")
+
     channel = VoiceChannel(
         workspace_id=query.work_space_id,
+        page_id=query.page_id,
         name=query.channel_name,
         is_deleted=False
     )
@@ -423,7 +462,50 @@ def get_user_invitations(db: Session, user_id: int):
                 "inviter_id": workspace.user_id, # Assuming owner invited for now
                 "invited_at": pm.joined_at
             })
+
+    # [NEW] Page Invitations
+    pending_page_memberships = db.query(PageMember).filter(
+        PageMember.user_id == user_id,
+        PageMember.status == "pending"
+    ).all()
+    
+    for ppm in pending_page_memberships:
+        page = db.query(Page).filter(Page.id == ppm.page_id).first()
+        if page:
+            results.append({
+                "id": page.id, # String ID for pages
+                "name": page.page_name,
+                "type": "page",
+                "workspace_id": page.workspace_id,
+                "invited_at": ppm.joined_at
+            })
     return results
+
+def respond_page_invitation(db: Session, page_id: str, user_id: int, response: str, target_workspace_id: int = None):
+    """
+    페이지 초대 응답 (수락/거절)
+    """
+    member_record = db.query(PageMember).filter(
+        PageMember.page_id == page_id,
+        PageMember.user_id == user_id,
+        PageMember.status == "pending"
+    ).first()
+    
+    if not member_record:
+        raise HTTPException(status_code=404, detail="No pending page invitation found")
+        
+    if response == "accepted":
+        member_record.status = "accepted"
+        if target_workspace_id:
+            member_record.target_workspace_id = target_workspace_id
+        db.commit()
+        return {"status": "success", "message": "Page invitation accepted"}
+    elif response == "declined":
+        db.delete(member_record)
+        db.commit()
+        return {"status": "success", "message": "Page invitation declined"}
+    else:
+        raise HTTPException(status_code=400, detail="Invalid response")
 
 def respond_invitation(db: Session, workspace_id: int, user_id: int, response: str):
     """
@@ -505,6 +587,85 @@ def get_workspace_members(db: Session, workspace_id: int):
         user = db.query(User).filter(User.id == m.user_id).first()
         if user and user.id != workspace.user_id: # Avoid duplicate if owner is in member table
              result.append({
+                "id": user.id,
+                "email": user.email_id,
+                "name": user.email_id.split('@')[0],
+                "role": m.role
+            })
+            
+    return result
+
+
+def invite_member_to_page(
+    db: Session,
+    page_id: str,
+    invite_data: PageInviteRequest,
+    requester_id: int
+):
+    """
+    페이지에 멤버 초대
+    """
+    page = db.query(Page).filter(Page.id == page_id, Page.is_deleted == False).first()
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+        
+    # 권한: 페이지 생성자(Owner) 또는 워크스페이스 소유자?
+    # 일단 Page.user_id == requester_id 체크
+    # 워크스페이스 소유자도 가능하게 하려면 WS 조회 필요.
+    if page.user_id != requester_id:
+        workspace = db.query(WorkSpace).filter(WorkSpace.id == page.workspace_id).first()
+        if not workspace or workspace.user_id != requester_id:
+             raise HTTPException(status_code=403, detail="Not authorized to invite to this page")
+
+    target_user = db.query(User).filter(User.email_id == invite_data.email).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    if target_user.id == page.user_id:
+        raise HTTPException(status_code=400, detail="User is the page owner")
+        
+    existing = db.query(PageMember).filter(PageMember.page_id == page_id, PageMember.user_id == target_user.id).first()
+    if existing:
+        if existing.status == "accepted":
+            raise HTTPException(status_code=409, detail="User is already a member")
+        elif existing.status == "pending":
+            return {"status": "success", "message": "Already invited (pending)"}
+    
+    new_member = PageMember(
+        page_id=page_id, 
+        user_id=target_user.id, 
+        role="member", 
+        status="pending" # [NEW] Requires acceptance
+    )
+    db.add(new_member)
+    db.commit()
+    
+    return {"status": "success", "message": f"Invitation sent to {target_user.email_id}"}
+
+def get_page_members(db: Session, page_id: str):
+    members = db.query(PageMember).filter(
+        PageMember.page_id == page_id,
+        PageMember.status == "accepted"
+    ).all()
+    
+    result = []
+    
+    # Page Owner
+    page = db.query(Page).filter(Page.id == page_id).first()
+    if page:
+        owner = db.query(User).filter(User.id == page.user_id).first()
+        if owner:
+            result.append({
+                "id": owner.id,
+                "email": owner.email_id,
+                "name": owner.email_id.split('@')[0],
+                "role": "owner"
+            })
+            
+    for m in members:
+        user = db.query(User).filter(User.id == m.user_id).first()
+        if user and user.id != page.user_id:
+            result.append({
                 "id": user.id,
                 "email": user.email_id,
                 "name": user.email_id.split('@')[0],

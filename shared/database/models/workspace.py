@@ -9,15 +9,15 @@ from shared.database.core.database import Base
 KST = pytz.timezone("Asia/Seoul")
 
 # =========================
-# WorkSpace Models
+# WorkSpace Model: 워크스페이스 정보를 저장하는 테이블
 # =========================
 class WorkSpace(Base):
     __tablename__ = "work_space"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
-    page_type = Column(String(100), nullable=False)
     work_space_name = Column(String(100), nullable=False)
+
 
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(),
@@ -34,6 +34,9 @@ class WorkSpace(Base):
     )
 
 
+# =========================
+# WorkspaceMember Model: 워크스페이스별 소속 멤버와 권한을 관리하는 테이블
+# =========================
 class WorkspaceMember(Base):
     __tablename__ = "workspace_members"
     
@@ -44,6 +47,23 @@ class WorkspaceMember(Base):
     joined_at = Column(DateTime, default=lambda: datetime.now(KST))
 
 
+# =========================
+# PageMember Model: 페이지별 독립적인 멤버 초대 및 권한을 관리하는 테이블
+# =========================
+class PageMember(Base):
+    __tablename__ = "page_members"
+    
+    page_id = Column(String(50), ForeignKey("page_list.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("user.id"), primary_key=True)
+    role = Column(String(20), default="member") # 'admin', 'member'
+    status = Column(String(20), default="pending") # 'pending', 'accepted', 'declined'
+    target_workspace_id = Column(Integer, ForeignKey("work_space.id"), nullable=True)
+    joined_at = Column(DateTime, default=lambda: datetime.now(KST))
+
+
+# =========================
+# Page Model: 워크스페이스 내의 개별 페이지 정보를 저장하는 테이블
+# =========================
 class Page(Base):
     __tablename__ = "page_list"
 
@@ -60,11 +80,15 @@ class Page(Base):
     icon = Column(String(10), nullable=True, default="📄")  
 
 
+# =========================
+# VoiceChannel Model: 보이스 채널(방) 정보를 저장하는 테이블
+# =========================
 class VoiceChannel(Base):
     __tablename__ = "voice_channel"
     
     id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
-    workspace_id = Column(Integer, ForeignKey("work_space.id"), nullable=False)
+    workspace_id = Column(Integer, ForeignKey("work_space.id"), nullable=True) # Optional now
+    page_id = Column(String(50), ForeignKey("page_list.id"), nullable=True) # [NEW] Linked to a specific page
     name = Column(String(100), nullable=False)
     
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
@@ -77,7 +101,7 @@ class VoiceChannel(Base):
 # ...
 
 # =========================
-# Communication Models (Consolidated here for now)
+# Report Model: 사용자 리포트 정보를 저장하는 테이블
 # =========================
 class Report(Base):
     __tablename__ = "report"
@@ -91,6 +115,9 @@ class Report(Base):
     
     user = relationship("shared.database.models.user.User", back_populates="reports")
 
+# =========================
+# Chatroom Model: 채팅방 정보를 저장하는 테이블
+# =========================
 class Chatroom(Base):
     __tablename__ = "chatroom"
 
@@ -101,11 +128,17 @@ class Chatroom(Base):
     users = relationship("shared.database.models.user.User", secondary="chatroom_users", back_populates="chatrooms")
     messages = relationship("Message", back_populates="chatroom")
 
+# =========================
+# ChatroomUsers Model: 유저와 채팅방 간의 다대다 관계를 매핑하는 테이블
+# =========================
 class ChatroomUsers(Base):
     __tablename__ = "chatroom_users"
     chatroom_id = Column(Integer, ForeignKey("chatroom.id"), primary_key=True)
     user_id = Column(Integer, ForeignKey("user.id"), primary_key=True)
 
+# =========================
+# Message Model: 채팅 메시지 내용을 저장하는 테이블
+# =========================
 class Message(Base):
     __tablename__ = "message"
 
@@ -119,10 +152,8 @@ class Message(Base):
     chatroom = relationship("Chatroom", back_populates="messages")
 
 # =========================
-# 워크스페이스 밖에 있던 Model파일
+# ContentBlock Model: 페이지 내의 블록 기반 컨텐츠(BlockNote)를 저장하는 테이블
 # =========================
-
-# ContentBlock (formerly Block) - Defined only here
 class ContentBlock(Base):
     __tablename__ = "block_list"
     __table_args__ = {'extend_existing': True}
@@ -146,13 +177,16 @@ class ContentBlock(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False)
 
-# VoiceChat - Defined only here
+# =========================
+# VoiceChat Model: 보이스 채팅 내역 및 관련 데이터를 저장하는 테이블
+# =========================
 class VoiceChat(Base):
     __tablename__ = "voice_chat_table"
     __table_args__ = {'extend_existing': True}
 
     id = Column(String(10), primary_key=True)
-    workspace_id = Column(Integer, ForeignKey("work_space.id"), nullable=False)
+    workspace_id = Column(Integer, ForeignKey("work_space.id"), nullable=True)
+    page_id = Column(String(50), ForeignKey("page_list.id"), nullable=True) # [NEW]
     user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(),

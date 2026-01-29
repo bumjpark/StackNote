@@ -5,7 +5,7 @@ from typing import Optional, Any, List
 class WorkspaceRequest(BaseModel):
     user_id: int
     work_space_name: str
-    page_type: str
+
 
 class WorkspaceUserResponse(BaseModel):
     id: int
@@ -16,6 +16,10 @@ class WorkspaceResponse(BaseModel):
     user: Optional[WorkspaceUserResponse] = None
     
 class WorkspaceInviteRequest(BaseModel):
+    email: str
+    inviter_id: int
+
+class PageInviteRequest(BaseModel):
     email: str
     inviter_id: int
 
@@ -74,6 +78,7 @@ class PageListCreateResponse(BaseModel):
 class VoiceChannelCreateQuery(BaseModel):
     user_id: int
     work_space_id: int
+    page_id: Optional[str] = None
     channel_name: str
 
 class VoiceChannelCreateResponse(BaseModel):
@@ -82,6 +87,12 @@ class VoiceChannelCreateResponse(BaseModel):
     channel_name: str
 
 class WorkspaceMemberResponse(BaseModel):
+    id: int
+    email: str
+    name: Optional[str] = None
+    role: str
+
+class PageMemberResponse(BaseModel):
     id: int
     email: str
     name: Optional[str] = None

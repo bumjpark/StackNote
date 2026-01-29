@@ -17,7 +17,9 @@ from shared.schemas.workspace import (
     WorkspaceInviteRequest,
     WorkspaceUpdate,
     PageUpdate,
-    WorkspaceMemberResponse
+    WorkspaceMemberResponse,
+    PageInviteRequest, # [NEW]
+    PageMemberResponse # [NEW]
 )
 from shared.schemas.block import BlockCreate, BlockUpdate, BlockResponse
 from . import pdf_service # [NEW]
@@ -52,10 +54,20 @@ def create_workspace(
     return WorkspaceResponse(
         status="success",
         user=WorkspaceUserResponse(
-            work_space_id=workspace.id,
+            id=workspace.id,
             work_space_name=workspace.work_space_name
         )
     )
+
+@router.delete("/{workspace_id}")
+def delete_workspace(
+    workspace_id: int,
+    db: Session = Depends(get_db)
+):
+    deleted = service.delete_workspace(db, workspace_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return {"status": "success", "message": "Workspace deleted"}
 
 @router.post("/pages/upload-pdf")
 async def upload_pdf_and_create_page(
@@ -243,7 +255,7 @@ def update_workspace_name(
     return WorkspaceResponse(
         status="success",
         user=WorkspaceUserResponse(
-            work_space_id=ws.id,
+            id=ws.id,
             work_space_name=ws.work_space_name
         )
     )
@@ -269,6 +281,27 @@ def get_invitations(
     """
     return service.get_user_invitations(db, user_id)
 
+@router.post("/pages/{page_id}/members", tags=["Page Membership"])
+def invite_member_to_page_endpoint(
+    page_id: str,
+    request: PageInviteRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    페이지에 멤버 초대
+    """
+    return service.invite_member_to_page(db, page_id, request, request.inviter_id)
+
+@router.get("/pages/{page_id}/members", response_model=List[PageMemberResponse], tags=["Page Membership"])
+def get_page_members_endpoint(
+    page_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    페이지 멤버 조회
+    """
+    return service.get_page_members(db, page_id)
+
 @router.post("/invitations/{workspace_id}/accept", tags=["Workspace Invitation"])
 def accept_invitation(
     workspace_id: int,
@@ -290,3 +323,27 @@ def decline_invitation(
     초대 거절
     """
     return service.respond_invitation(db, workspace_id, user_id, "declined")
+
+@router.post("/pages/{page_id}/accept", tags=["Page Membership"])
+def accept_page_invitation(
+    page_id: str,
+    payload: dict = Body(...), # Expect { "user_id": 1, "target_workspace_id": 2 }
+    db: Session = Depends(get_db)
+):
+    """
+    페이지 초대 수락 (Target Workspace ID 포함)
+    """
+    user_id = payload.get("user_id")
+    target_workspace_id = payload.get("target_workspace_id")
+    return service.respond_page_invitation(db, page_id, user_id, "accepted", target_workspace_id)
+
+@router.post("/pages/{page_id}/decline", tags=["Page Membership"])
+def decline_page_invitation(
+    page_id: str,
+    user_id: int = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """
+    페이지 초대 거절
+    """
+    return service.respond_page_invitation(db, page_id, user_id, "declined")

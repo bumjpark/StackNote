@@ -13,6 +13,7 @@ export interface Page {
 export interface VoiceChannel {
     id: string;
     name: string;
+    page_id?: string; // [NEW]
     users: string[]; // User IDs mock
 }
 
@@ -23,10 +24,11 @@ export interface WorkspaceMember {
     role: string;
 }
 
+export interface PageMember extends WorkspaceMember { } // Alias/reuse
+
 export interface Workspace {
     id: string;
     name: string;
-    type: 'private' | 'team';
     privatePages: Page[];
     teamPages: Page[];
     voiceChannels: VoiceChannel[];
@@ -38,10 +40,12 @@ interface WorkspaceContextType {
     currentWorkspace: Workspace | null;
     currentPage: Page | null;
     currentChannel: VoiceChannel | null;
-    createWorkspace: (name: string, type: 'private' | 'team') => void;
+    createWorkspace: (name: string) => void;
     createPage: (workspaceId: string, title: string, type: 'private' | 'team') => void;
-    createChannel: (workspaceId: string, name: string) => void;
+    createChannel: (workspaceId: string, name: string, pageId?: string) => void;
     inviteMember: (workspaceId: string, email: string) => Promise<void>;
+    inviteToPage: (pageId: string, email: string) => Promise<void>;
+    fetchPageMembers: (pageId: string) => Promise<WorkspaceMember[]>;
     selectWorkspace: (workspaceId: string) => void;
     selectPage: (pageId: string) => void;
     selectChannel: (channelId: string) => void;
@@ -50,9 +54,10 @@ interface WorkspaceContextType {
     updatePageIcon: (pageId: string, icon: string) => void;
     updateWorkspaceName: (workspaceId: string, name: string) => void;
     deletePage: (pageId: string) => Promise<void>;
+    deleteWorkspace: (workspaceId: string) => Promise<void>;
     refreshWorkspaces: () => Promise<void>;
     getInvitations: () => Promise<any[]>;
-    respondInvitation: (workspaceId: string, accept: boolean) => Promise<void>;
+    respondInvitation: (id: string, accept: boolean, type?: string) => Promise<void>;
     fetchMembers: (workspaceId: string) => Promise<void>;
     uploadPdf: (workspaceId: string, file: File) => Promise<void>;
 }
@@ -76,7 +81,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
     const [activeVoiceChannelId, setActiveVoiceChannelId] = useState<string | null>(null);
     const [activeVoiceWorkspaceId, setActiveVoiceWorkspaceId] = useState<string | null>(null);
 
-    const refreshWorkspaces = async () => {
+    const refreshWorkspaces = async (preserveCurrentSelection: boolean = false) => {
         try {
             const userId = localStorage.getItem('user_id');
             if (!userId) {
@@ -84,16 +89,27 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
                 return;
             }
 
+            // Capture current IDs before refresh if preserving
+            const savedWorkspaceId = preserveCurrentSelection ? currentWorkspaceId : null;
+            const savedPageId = preserveCurrentSelection ? currentPageId : null;
+
             const response = await api.get(`/workspace/user/${userId}`);
             const fetchedWorkspaces = response.data.map((ws: any) => ({
                 ...ws,
-                members: ws.members || [] // Initialize members if missing
+                id: String(ws.id), // Ensure ID is always string for comparison
+                members: ws.members || []
             }));
             setWorkspaces(fetchedWorkspaces);
 
             if (fetchedWorkspaces.length > 0) {
-                // If no workspace selected yet, or current one invalid, select first
-                if (!currentWorkspaceId || !fetchedWorkspaces.find((w: Workspace) => w.id === currentWorkspaceId)) {
+                // If preserving and the saved workspace still exists, restore it
+                if (preserveCurrentSelection && savedWorkspaceId && fetchedWorkspaces.find((w: Workspace) => w.id === savedWorkspaceId)) {
+                    setCurrentWorkspaceId(savedWorkspaceId);
+                    if (savedPageId) {
+                        setCurrentPageId(savedPageId);
+                    }
+                } else if (!currentWorkspaceId || !fetchedWorkspaces.find((w: Workspace) => w.id === currentWorkspaceId)) {
+                    // If no workspace selected yet, or current one invalid, select first
                     const firstWs = fetchedWorkspaces[0];
                     setCurrentWorkspaceId(firstWs.id);
                     if (firstWs.privatePages.length > 0) {
@@ -131,32 +147,18 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
         return ws?.voiceChannels.find(c => c.id === activeVoiceChannelId) || null;
     })();
 
-    const createWorkspace = async (name: string, type: 'private' | 'team') => {
+    const createWorkspace = async (name: string) => {
         try {
             const userId = localStorage.getItem('user_id');
             if (!userId) return;
 
             const response = await api.post('/workspace', {
                 user_id: parseInt(userId),
-                work_space_name: name,
-                page_type: type
+                work_space_name: name
             });
-            // Refetch to get consistent ID and state
-            // Or construct manually if response contains enough info
-            const newWsData = response.data.user;
-            const newWorkspace: Workspace = {
-                id: String(newWsData.work_space_id),
-                name: newWsData.work_space_name,
-                type: type, // Use provided type
-                privatePages: [],
-                teamPages: [],
-                voiceChannels: [],
-                members: []
-            };
-
-            setWorkspaces([...workspaces, newWorkspace]);
-            setCurrentWorkspaceId(newWorkspace.id);
-            // new workspace has no pages yet
+            await refreshWorkspaces();
+            const newId = String(response.data.user.id);
+            setCurrentWorkspaceId(newId);
         } catch (error) {
             console.error("Failed to create workspace:", error);
         }
@@ -195,7 +197,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
         }
     };
 
-    const createChannel = async (workspaceId: string, name: string) => {
+    const createChannel = async (workspaceId: string, name: string, pageId?: string) => {
         try {
             const userId = localStorage.getItem('user_id');
             if (!userId) {
@@ -206,6 +208,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             const response = await api.post('/workspace/voice_channel', {
                 user_id: parseInt(userId),
                 work_space_id: parseInt(workspaceId),
+                page_id: pageId, // [NEW] Optional
                 channel_name: name
             });
 
@@ -214,7 +217,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
 
             setWorkspaces(prev => prev.map(w => {
                 if (w.id === workspaceId) {
-                    const newChannel: VoiceChannel = { id: channel_id, name: channel_name, users: [] };
+                    const newChannel: VoiceChannel = { id: channel_id, name: channel_name, page_id: pageId, users: [] };
                     return { ...w, voiceChannels: [...w.voiceChannels, newChannel] };
                 }
                 return w;
@@ -253,6 +256,38 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
         }
     };
 
+    const inviteToPage = async (pageId: string, email: string) => {
+        try {
+            const userId = localStorage.getItem('user_id');
+            if (!userId) {
+                alert("Please login first");
+                return;
+            }
+            await api.post(`/workspace/pages/${pageId}/members`, {
+                email,
+                inviter_id: parseInt(userId)
+            });
+            alert(`Invitation sent to ${email}`);
+        } catch (error: any) {
+            console.error("Failed to invite member to page:", error);
+            if (error.response && error.response.data && error.response.data.detail) {
+                alert(`Failed to invite: ${error.response.data.detail}`);
+            } else {
+                alert("Failed to invite member. Please try again.");
+            }
+        }
+    }
+
+    const fetchPageMembers = async (pageId: string): Promise<WorkspaceMember[]> => {
+        try {
+            const response = await api.get(`/workspace/pages/${pageId}/members`);
+            return response.data;
+        } catch (error) {
+            console.error("Failed to fetch page members:", error);
+            return [];
+        }
+    }
+
     const getInvitations = useCallback(async () => {
         try {
             const userId = localStorage.getItem('user_id');
@@ -265,19 +300,28 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
         }
     }, []);
 
-    const respondInvitation = async (workspaceId: string, accept: boolean) => {
+    const respondInvitation = async (id: string, accept: boolean, type: string = 'workspace') => {
         try {
             const userId = localStorage.getItem('user_id');
             const endpoint = accept ? 'accept' : 'decline';
-            await api.post(`/workspace/invitations/${workspaceId}/${endpoint}`, {
-                user_id: parseInt(userId || '0')
-            });
-            // Refresh workspaces if accepted
+
+            if (type === 'page') {
+                await api.post(`/workspace/pages/${id}/${endpoint}`, {
+                    user_id: parseInt(userId || '0'),
+                    target_workspace_id: accept ? parseInt(currentWorkspaceId || '0') : undefined
+                });
+            } else {
+                await api.post(`/workspace/invitations/${id}/${endpoint}`, {
+                    user_id: parseInt(userId || '0')
+                });
+            }
+
+            // Refresh workspaces if accepted, preserving current selection
             if (accept) {
-                await refreshWorkspaces();
+                await refreshWorkspaces(true);
             }
         } catch (error) {
-            console.error("Failed to respond to invitation:", error);
+            console.error(`Failed to respond to ${type} invitation:`, error);
         }
     };
 
@@ -422,6 +466,31 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
         }
     };
 
+    const deleteWorkspace = async (workspaceId: string) => {
+        try {
+            await api.delete(`/workspace/${workspaceId}`);
+
+            setWorkspaces(prev => prev.filter(w => w.id !== workspaceId));
+
+            // If deleting current, switch to another
+            if (currentWorkspaceId === workspaceId) {
+                const remaining = workspaces.filter(w => w.id !== workspaceId);
+                if (remaining.length > 0) {
+                    setCurrentWorkspaceId(remaining[0].id);
+                } else {
+                    // Assuming empty string is default "no selection" or handle null if type allows
+                    // Checking type definition: activeVoiceWorkspaceId is string | null
+                    // currentWorkspaceId is string (from hook?) let's filter hook definition
+                    // Actually setCurrentWorkspaceId usually expects string. Let's check state definition.
+                    // State: const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string>('');
+                    setCurrentWorkspaceId('');
+                }
+            }
+        } catch (error) {
+            console.error("Failed to delete workspace:", error);
+        }
+    };
+
     const fetchMembers = useCallback(async (workspaceId: string) => {
         console.log(`[WorkspaceContext] fetchMembers called for ${workspaceId}`);
         try {
@@ -499,10 +568,13 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             updatePageIcon,
             updateWorkspaceName,
             deletePage,
+            deleteWorkspace, // [NEW] Included in provider
             refreshWorkspaces,
             getInvitations,
             respondInvitation,
             fetchMembers,
+            inviteToPage,
+            fetchPageMembers,
             uploadPdf
         }}>
             {children}
