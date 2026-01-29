@@ -45,7 +45,6 @@ backend/sql_app.db
 .env
 .env.local
 backend/app/uploads/
-backend/app/uploads/
 
 # IDE
 .vscode/
