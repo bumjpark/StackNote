@@ -12,8 +12,11 @@ services:
       - ./backend/sql_app.db:/app/sql_app.db
       - ./backend/app:/app/app
       - ./backend/app/uploads:/app/uploads # 공유 볼륨 (이미지 서빙용)
+      - ./shared:/app/shared # ✅ 추가: shared 폴더 마운트
     env_file:
       - .env
+    environment:
+      - PYTHONPATH=/app # ✅ 추가: /app을 파이썬 모듈 루트로
     depends_on:
       - db
     restart: always
@@ -27,6 +30,9 @@ services:
       - "8011:8000" # Voice 8011
     volumes:
       - ./voice-backend/app:/app/app
+      - ./shared:/app/shared
+    environment:
+      - PYTHONPATH=/app
     restart: always
 
   pdf-backend:
@@ -39,6 +45,9 @@ services:
     volumes:
       - ./pdf-backend/app:/app/app
       - ./backend/app/uploads:/app/uploads # 공유 볼륨 (이미지 저장용)
+      - ./shared:/app/shared
+    environment:
+      - PYTHONPATH=/app
     restart: always
 
   frontend:
