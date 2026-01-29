@@ -11,7 +11,6 @@ import {
     Lock,
     LogOut,
     Check,
-    User,
     Trash2,
     Bell,
     X,
@@ -30,26 +29,11 @@ interface VoiceChannelItemProps {
 }
 
 const VoiceChannelItem: React.FC<VoiceChannelItemProps> = ({ channel, isActive, onSelect }) => {
-    const [activeUsers, setActiveUsers] = useState<Array<{ user_id: string, username: string }>>([]);
-
-    useEffect(() => {
-        const fetchActiveUsers = async () => {
-            try {
-                const response = await fetch('http://localhost:8011/active_users');
-                const data = await response.json();
-                setActiveUsers(data[channel.id] || []);
-            } catch (err) {
-                console.error('Failed to fetch active users:', err);
-            }
-        };
-
-        fetchActiveUsers();
-        const interval = setInterval(fetchActiveUsers, 3000); // Poll every 3 seconds
-        return () => clearInterval(interval);
-    }, [channel.id]);
+    const { voiceParticipants } = useWorkspace();
+    const participants = voiceParticipants[channel.id] || [];
 
     return (
-        <div>
+        <div style={{ marginBottom: '4px' }}>
             {/* Channel Name */}
             <div
                 onClick={onSelect}
@@ -58,32 +42,49 @@ const VoiceChannelItem: React.FC<VoiceChannelItemProps> = ({ channel, isActive, 
                     fontSize: '0.9rem',
                     cursor: 'pointer',
                     display: 'flex', alignItems: 'center', gap: '0.5rem',
-                    background: isActive ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
-                    color: isActive ? '#10b981' : 'var(--text-secondary)'
+                    background: isActive ? 'rgba(35, 165, 90, 0.1)' : 'transparent',
+                    color: isActive ? '#23a55a' : 'var(--text-secondary)',
+                    borderRadius: '4px',
                 }}
                 className="hover:bg-white/5"
             >
                 <Mic size={14} />
-                <span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{channel.name}</span>
+                <span style={{
+                    overflow: 'hidden',
+                    whiteSpace: 'nowrap',
+                    textOverflow: 'ellipsis',
+                    fontWeight: isActive ? 600 : 400
+                }}>{channel.name}</span>
             </div>
 
-            {/* Active Users */}
-            {activeUsers.length > 0 && (
-                <div style={{ paddingLeft: '2rem', marginTop: '0.25rem' }}>
-                    {activeUsers.map(user => (
-                        <div
-                            key={user.user_id}
-                            style={{
-                                padding: '0.25rem 0.5rem',
-                                fontSize: '0.85rem',
-                                color: 'var(--text-secondary)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.5rem'
-                            }}
-                        >
-                            <User size={12} />
-                            <span>{user.username}</span>
+            {/* Participants in Sidebar */}
+            {participants.length > 0 && (
+                <div style={{ padding: '4px 8px 8px 32px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {participants.map(p => (
+                        <div key={p.userId} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{
+                                width: '22px', height: '22px', borderRadius: '50%',
+                                background: 'rgba(255,255,255,0.1)', // Keep background constant
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '9px', color: 'white', fontWeight: 'bold',
+                                border: p.isSpeaking ? '2.5px solid #23a55a' : '2.5px solid transparent',
+                                boxShadow: p.isSpeaking ? '0 0 10px rgba(35, 165, 90, 0.8)' : 'none',
+                                transition: 'all 0.1s ease', // Faster transition for responsiveness
+                                position: 'relative'
+                            }}>
+                                {p.username.substring(0, 1).toUpperCase()}
+                            </div>
+                            <span style={{
+                                fontSize: '0.8rem',
+                                color: p.isSpeaking ? '#f2f3f5' : '#949ba4',
+                                fontWeight: p.isSpeaking ? 600 : 400,
+                                transition: 'all 0.2s ease',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis'
+                            }}>
+                                {p.username}
+                            </span>
                         </div>
                     ))}
                 </div>
@@ -559,11 +560,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         </div>
                     )}
 
-                    {/* Members List */}
+                    {/* Members List 복구 (음성 채널 참여자가 없을 때만 표시하거나, 혹은 항상 표시) */}
                     {(currentWorkspace?.type === 'team' || currentPage?.type === 'team' || currentWorkspace?.voiceChannels.some(vc => vc.id === currentChannel?.id)) && (
-                        <div style={{ marginBottom: '1.5rem' }}>
+                        <div style={{ marginBottom: '1.5rem', marginTop: '1rem' }}>
                             <div style={{ padding: '0 0.75rem 0.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-secondary)' }}>
-                                <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>MEMBERS</span>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>PAGE MEMBERS</span>
                             </div>
                             {currentWorkspace?.members?.map(member => (
                                 <div
@@ -579,17 +580,18 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                     <div style={{
                                         width: '24px', height: '24px',
                                         borderRadius: '50%',
-                                        background: 'var(--bg-tertiary)',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                        background: 'rgba(255,255,255,0.05)',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        fontSize: '10px', color: 'var(--text-primary)'
                                     }}>
-                                        <User size={14} color="var(--text-primary)" />
+                                        {member.name.substring(0, 1).toUpperCase()}
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                                         <span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', color: 'var(--text-primary)' }}>
-                                            {member.name || member.email?.split('@')[0]}
+                                            {member.name}
                                         </span>
                                         <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
-                                            {member.role}
+                                            {member.role === 'owner' ? 'owner' : ''}
                                         </span>
                                     </div>
                                 </div>
@@ -612,11 +614,27 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             </aside>
 
             {/* Main Content Area */}
-            <main style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
-                {children}
-
-                {/* Voice Manager (Connected to State) */}
-                <VoiceManager />
+            <main style={{
+                flex: 1,
+                display: 'flex',
+                overflow: 'hidden',
+                position: 'relative',
+                background: 'var(--bg-primary)'
+            }}>
+                {currentChannel ? (
+                    <div style={{ flex: 1, height: '100%', overflow: 'hidden' }}>
+                        <VoiceManager />
+                    </div>
+                ) : (
+                    <div style={{
+                        flex: 1,
+                        height: '100%',
+                        overflowY: 'auto',
+                        position: 'relative'
+                    }}>
+                        {children}
+                    </div>
+                )}
             </main>
         </div>
     );

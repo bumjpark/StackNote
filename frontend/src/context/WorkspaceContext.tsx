@@ -16,6 +16,12 @@ export interface VoiceChannel {
     users: string[]; // User IDs mock
 }
 
+export interface VoiceParticipant {
+    userId: string;
+    username: string;
+    isSpeaking: boolean;
+}
+
 export interface WorkspaceMember {
     id: number;
     email: string;
@@ -55,6 +61,20 @@ interface WorkspaceContextType {
     respondInvitation: (workspaceId: string, accept: boolean) => Promise<void>;
     fetchMembers: (workspaceId: string) => Promise<void>;
     uploadPdf: (workspaceId: string, file: File) => Promise<void>;
+
+    // 음성 전용 공간 관련
+    getVoiceHistory: (channelId: string) => Promise<any[]>;
+    saveVoiceChat: (channelId: string, content: string, msgId?: string) => Promise<any>;
+
+    // 실시간 참여자 및 발화 상태
+    voiceParticipants: Record<string, VoiceParticipant[]>;
+    setChannelParticipants: (channelId: string, participants: VoiceParticipant[]) => void;
+    updateSpeakingStatus: (channelId: string, userId: string, isSpeaking: boolean) => void;
+
+    // 시그널링 훅 (음성/채팅용)
+    registerSendMessageHandler: (handler: ((content: string) => void) | null) => void;
+    sendChatMessage: (content: string) => void;
+    deleteVoiceChat: (chatId: string) => Promise<boolean>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -75,6 +95,82 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
     // Voice State - Globally persistent
     const [activeVoiceChannelId, setActiveVoiceChannelId] = useState<string | null>(null);
     const [activeVoiceWorkspaceId, setActiveVoiceWorkspaceId] = useState<string | null>(null);
+
+    // 실시간 음성 참여자 상태 (channelId -> VoiceParticipant[])
+    const [voiceParticipants, setVoiceParticipants] = useState<Record<string, VoiceParticipant[]>>({});
+
+    const setChannelParticipants = useCallback((channelId: string, participants: VoiceParticipant[]) => {
+        setVoiceParticipants(prev => ({
+            ...prev,
+            [channelId]: participants
+        }));
+    }, []);
+
+    const updateSpeakingStatus = useCallback((channelId: string, userId: string, isSpeaking: boolean) => {
+        setVoiceParticipants(prev => {
+            const participants = prev[channelId] || [];
+            const userIndex = participants.findIndex(p => p.userId === userId);
+
+            if (userIndex === -1) return prev;
+            if (participants[userIndex].isSpeaking === isSpeaking) return prev;
+
+            const newParticipants = [...participants];
+            newParticipants[userIndex] = { ...newParticipants[userIndex], isSpeaking };
+
+            return {
+                ...prev,
+                [channelId]: newParticipants
+            };
+        });
+    }, []);
+
+    // 시그널링 레퍼런스
+    const sendMessageHandlerRef = React.useRef<((content: string) => void) | null>(null);
+
+    const sendChatMessage = useCallback((content: string) => {
+        if (sendMessageHandlerRef.current) {
+            sendMessageHandlerRef.current(content);
+        }
+    }, []);
+
+    const registerSendMessageHandler = useCallback((handler: ((content: string) => void) | null) => {
+        sendMessageHandlerRef.current = handler;
+    }, []);
+
+    const getVoiceHistory = async (channelId: string) => {
+        try {
+            const response = await api.get(`/voice/${channelId}/history`);
+            return response.data.history || [];
+        } catch (error) {
+            console.error("Failed to fetch voice history:", error);
+            return [];
+        }
+    };
+
+    const saveVoiceChat = async (channelId: string, content: string, msgId?: string) => {
+        try {
+            const userId = localStorage.getItem('user_id');
+            const response = await api.post(`/voice/${channelId}/chat`, {
+                user_id: parseInt(userId || "0"),
+                content: content,
+                id: msgId
+            });
+            return response.data;
+        } catch (error) {
+            console.error("Failed to save voice chat:", error);
+            return null;
+        }
+    };
+
+    const deleteVoiceChat = async (chatId: string) => {
+        try {
+            await api.delete(`/voice/chat/${chatId}`);
+            return true;
+        } catch (error) {
+            console.error("Failed to delete voice chat:", error);
+            return false;
+        }
+    };
 
     const refreshWorkspaces = async () => {
         try {
@@ -503,7 +599,15 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             getInvitations,
             respondInvitation,
             fetchMembers,
-            uploadPdf
+            uploadPdf,
+            getVoiceHistory,
+            saveVoiceChat,
+            voiceParticipants,
+            setChannelParticipants,
+            updateSpeakingStatus,
+            registerSendMessageHandler,
+            sendChatMessage,
+            deleteVoiceChat
         }}>
             {children}
         </WorkspaceContext.Provider>

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useWorkspace } from '../../context/WorkspaceContext';
-import { Mic, MicOff, PhoneOff, Volume2, VolumeX } from 'lucide-react';
+import { useWorkspace, type VoiceParticipant } from '../../context/WorkspaceContext';
+import { Mic, MicOff, PhoneOff, Volume2, VolumeX, MessageSquare, ChevronDown, PlusCircle, Gift, StickyNote, Smile, Link, Pin, Reply, Forward, Trash2, Pencil, MoreHorizontal } from 'lucide-react';
 
 const ENABLE_VOICE = true;
 
@@ -11,7 +11,15 @@ interface PeerConnection {
 interface PeerInfo {
     username: string;
     isSpeaking: boolean;
-    isMuted: boolean; // Local mute state tracking (for UI)
+    isMuted: boolean;
+}
+
+interface ChatMessage {
+    id: string;
+    senderId: string;
+    senderName: string;
+    content: string;
+    timestamp: number;
 }
 
 // Safe context resume helper
@@ -26,8 +34,23 @@ const safeResume = async (ctx: AudioContext) => {
 };
 
 const VoiceManager: React.FC = () => {
-    const { currentChannel, selectChannel } = useWorkspace();
+    const {
+        currentChannel,
+        selectChannel,
+        registerSendMessageHandler,
+        getVoiceHistory,
+        saveVoiceChat,
+        deleteVoiceChat,
+        updateSpeakingStatus,
+        setChannelParticipants
+    } = useWorkspace();
     const [isConnected, setIsConnected] = useState(false);
+
+    // 채팅 상태
+    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+    const [showChat, setShowChat] = useState(true); // Default to true for full-height panel
+    const [chatInput, setChatInput] = useState('');
+    const chatEndRef = useRef<HTMLDivElement>(null);
 
     // Store info about peers: { [userId]: { username, isSpeaking } }
     const [peersInfo, setPeersInfo] = useState<Record<string, PeerInfo>>({});
@@ -57,6 +80,39 @@ const VoiceManager: React.FC = () => {
         sessionStorage.getItem('user_email') || `User ${myUserId.substring(0, 4)}`
     ).current;
 
+    const handleSendChat = async (content: string = chatInput) => {
+        const text = content.trim();
+        if (!text || !isConnected || !currentChannel) return;
+
+        const timestamp = Date.now();
+        const msgId = Math.random().toString(36).substring(2, 12); // DB String(10) 호환
+
+        // 1. Signaling (Broadcast)
+        sendSignal({
+            type: 'chat',
+            id: msgId,
+            content: text,
+            sender_user_id: myUserId,
+            username: myUsername,
+            timestamp: timestamp
+        });
+
+        // 2. UI 즉시 반영 (Optimistic Update)
+        const myMsg: ChatMessage = {
+            id: msgId,
+            senderId: myUserId,
+            senderName: myUsername,
+            content: text,
+            timestamp: timestamp
+        };
+        setChatMessages(prev => [...prev.slice(-49), myMsg]);
+
+        if (content === chatInput) setChatInput('');
+
+        // 3. 백엔드 DB 저장 (Persistence)
+        await saveVoiceChat(currentChannel.id, text, msgId);
+    };
+
     const connectWebSocket = () => {
         if (!currentChannel) return;
         const roomId = currentChannel.id;
@@ -83,7 +139,9 @@ const VoiceManager: React.FC = () => {
         ws.current.onclose = () => {
             console.log("WebSocket Disconnected");
             setIsConnected(false);
-            // cleanup is called by useEffect return
+            if (currentChannel) {
+                setChannelParticipants(currentChannel.id, []);
+            }
         };
     };
 
@@ -113,6 +171,26 @@ const VoiceManager: React.FC = () => {
                 // 3. Connect WebSocket ONLY after stream is ready
                 connectWebSocket();
 
+                // 4. Load Chat History
+                console.log('Fetching chat history for channel:', currentChannel.id);
+                const history = await getVoiceHistory(currentChannel.id);
+                console.log(`Loaded ${history.length} history messages`);
+
+                const mappedHistory = history.map((h: any) => {
+                    // Safe date parsing for Safari (MySQL space format -> ISO T format)
+                    const dateStr = h.created_at ? String(h.created_at).replace(' ', 'T') : null;
+                    const timestamp = dateStr ? new Date(dateStr).getTime() : Date.now();
+
+                    return {
+                        id: h.id,
+                        senderId: String(h.user_id),
+                        senderName: h.sender_name || `User ${String(h.user_id).substring(0, 4)}`,
+                        content: h.chat_content,
+                        timestamp: isNaN(timestamp) ? Date.now() : timestamp
+                    };
+                });
+                setChatMessages(mappedHistory);
+
             } catch (err) {
                 console.error("Failed to get local stream", err);
                 // Do not alert, just log. Alert might cause focus issues.
@@ -125,16 +203,15 @@ const VoiceManager: React.FC = () => {
         const checkVolume = () => {
             if (analysers.current['me']) {
                 const vol = getVolume(analysers.current['me']);
-                setIsSpeaking(vol > 10);
+                setIsSpeaking(vol > 7);
             }
+
             Object.keys(peers.current).forEach(uid => {
                 if (analysers.current[uid]) {
                     const vol = getVolume(analysers.current[uid]);
-                    const speaking = vol > 10;
+                    const speaking = vol > 7;
                     setPeersInfo(prev => {
-                        // Guard: If we have audio but no user info yet (identify signal pending), skip update
                         if (!prev[uid]) return prev;
-
                         if (prev[uid].isSpeaking !== speaking) {
                             return { ...prev, [uid]: { ...prev[uid], isSpeaking: speaking } };
                         }
@@ -142,6 +219,7 @@ const VoiceManager: React.FC = () => {
                     });
                 }
             });
+
             animationRef.current = requestAnimationFrame(checkVolume);
         };
         animationRef.current = requestAnimationFrame(checkVolume);
@@ -150,6 +228,41 @@ const VoiceManager: React.FC = () => {
             cleanup();
         };
     }, [currentChannel]);
+
+    // Update global context when speaking state or peers change
+    useEffect(() => {
+        if (!currentChannel) return;
+
+        const participants: VoiceParticipant[] = [
+            { userId: myUserId, username: myUsername, isSpeaking: isSpeaking },
+            ...Object.entries(peersInfo).map(([uid, info]) => ({
+                userId: uid,
+                username: info.username,
+                isSpeaking: info.isSpeaking
+            }))
+        ];
+
+        setChannelParticipants(currentChannel.id, participants);
+    }, [isSpeaking, peersInfo, currentChannel, myUserId, myUsername, setChannelParticipants]);
+
+    // 채팅 자동 스크롤
+    useEffect(() => {
+        if (showChat) {
+            chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [chatMessages, showChat]);
+
+    // 시그널링 핸들러 등록
+    useEffect(() => {
+        if (isConnected) {
+            registerSendMessageHandler((content: string) => {
+                handleSendChat(content);
+            });
+        } else {
+            registerSendMessageHandler(null);
+        }
+        return () => registerSendMessageHandler(null);
+    }, [isConnected, registerSendMessageHandler, currentChannel]);
 
     useEffect(() => {
         // Handle Mute (Mic)
@@ -252,6 +365,21 @@ const VoiceManager: React.FC = () => {
 
     const handleSignalMessage = async (data: any) => {
         switch (data.type) {
+            case 'chat':
+                // 내 메시지는 이미 handleSendChat에서 넣었으므로 중복 방지 (id 등 비교 필요시)
+                if (data.sender_user_id === myUserId) return;
+
+                setChatMessages(prev => [...prev.slice(-49), {
+                    id: data.id || `msg-${Date.now()}-${Math.random()}`,
+                    senderId: data.sender_user_id,
+                    senderName: data.username || 'Unknown',
+                    content: data.content,
+                    timestamp: data.timestamp || Date.now()
+                }]);
+                break;
+            case 'delete_chat':
+                setChatMessages(prev => prev.filter(m => m.id !== data.id));
+                break;
             case 'identify':
                 setPeersInfo(prev => ({
                     ...prev,
@@ -431,6 +559,20 @@ const VoiceManager: React.FC = () => {
         }
     };
 
+    const handleDeleteChat = async (chatId: string) => {
+        // Optimistic UI update
+        setChatMessages(prev => prev.filter(m => m.id !== chatId));
+
+        // Signal other peers
+        sendSignal({
+            type: 'delete_chat',
+            id: chatId
+        });
+
+        // Persist deletion (API)
+        await deleteVoiceChat(chatId);
+    };
+
     const handleDisconnect = () => {
         selectChannel('');
     };
@@ -439,90 +581,289 @@ const VoiceManager: React.FC = () => {
 
     return (
         <div style={{
-            position: 'fixed', bottom: 20, right: 20,
-            background: '#2f3136',
-            width: '280px',
-            borderRadius: '8px',
-            boxShadow: '0 4px 6px rgba(0,0,0,0.5)',
-            color: '#fff', fontSize: '0.9rem', zIndex: 100,
-            overflow: 'hidden'
+            height: '100%',
+            width: '100%',
+            background: 'transparent',
+            color: '#dbdee1', fontSize: '0.9rem',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
         }}>
-            {/* Header */}
-            <div style={{ padding: '12px 16px', background: '#202225', borderBottom: '1px solid #202225', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
-                    <Volume2 size={16} color="#10b981" />
-                    <span>{currentChannel.name}</span>
-                </div>
-                <div style={{ fontSize: '0.75rem', color: isConnected ? '#10b981' : '#f59e0b' }}>
-                    {isConnected ? 'Connected' : 'Connecting...'}
-                </div>
-            </div>
-
-            {/* User List */}
-            <div style={{ padding: '8px 0', maxHeight: '200px', overflowY: 'auto' }}>
-                {/* Me */}
-                <div style={{ padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* 상단 헤더: 디스코드 스타일 */}
+            <div style={{
+                padding: '12px 16px',
+                background: 'rgba(43, 45, 49, 0.6)',
+                borderBottom: '1px solid rgba(0, 0, 0, 0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, color: '#f2f3f5' }}>
                     <div style={{
-                        width: '32px', height: '32px', borderRadius: '50%',
-                        background: '#5865f2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold',
-                        border: isSpeaking ? '2px solid #10b981' : '2px solid transparent',
-                        transition: 'border 0.1s'
-                    }}>
-                        {myUsername.substring(0, 1).toUpperCase()}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '0.9rem', fontWeight: 500 }}>{myUsername} (Me)</div>
-                        <div style={{ fontSize: '0.7rem', color: '#b9bbbe' }}>{isMicMuted ? 'Muted' : 'Online'}</div>
-                    </div>
-                    {isMicMuted && <MicOff size={14} color="#ef4444" />}
+                        width: '8px', height: '8px', borderRadius: '50%',
+                        background: isConnected ? '#23a55a' : '#f0b232',
+                        boxShadow: isConnected ? '0 0 8px #23a55a' : 'none'
+                    }} />
+                    <span style={{ fontSize: '0.95rem' }}>{currentChannel.name}</span>
                 </div>
-
-                {/* Peers */}
-                {Object.entries(peersInfo).map(([uid, info]) => (
-                    <div key={uid} style={{ padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{
-                            width: '32px', height: '32px', borderRadius: '50%',
-                            background: '#3ba55c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold',
-                            border: info.isSpeaking ? '2px solid #10b981' : '2px solid transparent',
-                            transition: 'border 0.1s'
-                        }}>
-                            {info.username.substring(0, 1).toUpperCase()}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: '0.9rem', fontWeight: 500 }}>{info.username}</div>
-                        </div>
-                    </div>
-                ))}
+                <div style={{ display: 'flex', gap: '12px', color: '#b5bac1' }}>
+                    <Volume2 size={18} style={{ cursor: 'pointer' }} />
+                    <MessageSquare size={18} style={{ cursor: 'pointer', color: showChat ? '#5865f2' : 'inherit' }} onClick={() => setShowChat(!showChat)} />
+                </div>
             </div>
 
-            {/* Controls */}
-            <div style={{ padding: '12px', background: '#292b2f', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', gap: '8px' }}>
+            {/* 메인 콘텐츠 영역 */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '0' }}>
+                {/* 유저 리스트 제거됨 (사용자 요청) */}
+
+                {/* 채팅 영역: 디스코드 스타일 메시지 레이아웃 */}
+                {showChat && (
+                    <div style={{
+                        flex: 1,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        height: '350px',
+                        background: 'transparent',
+                    }}>
+                        <div style={{
+                            flex: 1,
+                            overflowY: 'auto',
+                            padding: '16px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0' // Control spacing via margins for consistency
+                        }}>
+                            {/* Message Action Bar Definition (Re-usable CSS-based) */}
+                            <style>{`
+                                .message-row { position: relative; transition: background 0.1s; }
+                                .message-row:hover { background: rgba(255, 255, 255, 0.02) !important; }
+                                .message-actions {
+                                    display: none;
+                                    position: absolute;
+                                    top: -16px;
+                                    right: 16px;
+                                    background: #2b2d31;
+                                    border: 1px solid #1e1f22;
+                                    border-radius: 4px;
+                                    padding: 2px;
+                                    z-index: 10;
+                                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                                    flex-direction: row;
+                                    gap: 1px;
+                                }
+                                .message-row:hover .message-actions { display: flex; }
+                                .action-item {
+                                    padding: 6px;
+                                    border-radius: 4px;
+                                    color: #b5bac1;
+                                    cursor: pointer;
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                }
+                                .action-item:hover { background: #35373c; color: #dbdee1; }
+                                .action-item.delete:hover { background: #f23f43; color: #fff; }
+                            `}</style>
+
+                            {chatMessages.map((msg, index) => {
+                                const prevMsg = chatMessages[index - 1];
+                                const isCompact = prevMsg && prevMsg.senderId === msg.senderId && (msg.timestamp - prevMsg.timestamp < 300000);
+
+                                if (isCompact) {
+                                    return (
+                                        <div key={msg.id} className="message-row" style={{ paddingLeft: '52px', paddingRight: '16px', marginBottom: '6px' }}>
+                                            {/* Compact Action Bar */}
+                                            <div className="message-actions">
+                                                <div className="action-item"><Link size={16} /></div>
+                                                <div className="action-item"><Pencil size={16} /></div>
+                                                <div className="action-item"><Pin size={16} /></div>
+                                                <div className="action-item"><MoreHorizontal size={16} /></div>
+                                                <div className="action-item"><Smile size={16} /></div>
+                                                <div className="action-item"><Reply size={16} /></div>
+                                                <div className="action-item"><Forward size={16} /></div>
+                                                <div className="action-item delete" onClick={() => handleDeleteChat(msg.id)}><Trash2 size={16} /></div>
+                                            </div>
+
+                                            <div style={{
+                                                color: '#dbdee1',
+                                                fontSize: '0.95rem',
+                                                lineHeight: '1.4',
+                                                wordBreak: 'break-word',
+                                                background: 'rgba(0, 0, 0, 0.15)',
+                                                border: '1px solid rgba(255, 255, 255, 0.05)',
+                                                borderRadius: '8px',
+                                                padding: '6px 12px',
+                                                width: '100%',
+                                                boxSizing: 'border-box'
+                                            }}>
+                                                {msg.content}
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                    <div key={msg.id} className="message-row" style={{ display: 'flex', flexDirection: 'column', marginBottom: '6px', paddingRight: '16px' }}>
+                                        {/* Standard Action Bar */}
+                                        <div className="message-actions" style={{ top: '0px' }}>
+                                            <div className="action-item"><Link size={16} /></div>
+                                            <div className="action-item"><Pencil size={16} /></div>
+                                            <div className="action-item"><Pin size={16} /></div>
+                                            <div className="action-item"><MoreHorizontal size={16} /></div>
+                                            <div className="action-item"><Smile size={16} /></div>
+                                            <div className="action-item"><Reply size={16} /></div>
+                                            <div className="action-item"><Forward size={16} /></div>
+                                            <div className="action-item delete" onClick={() => handleDeleteChat(msg.id)}><Trash2 size={16} /></div>
+                                        </div>
+
+                                        {/* 이름 및 시간 (박스 위, 아바타 옆으로 정렬) */}
+                                        <div style={{ paddingLeft: '52px', marginBottom: '2px', display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                                            <span style={{ fontWeight: 600, color: '#f2f3f5', fontSize: '0.9rem' }}>{msg.senderName}</span>
+                                            <span style={{ fontSize: '0.7rem', color: '#949ba4' }}>
+                                                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </span>
+                                        </div>
+
+                                        {/* 아바타와 메시지 박스 (일직선 정렬) */}
+                                        <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                                            {/* 아바타 */}
+                                            <div style={{
+                                                width: '40px', height: '40px', borderRadius: '50%',
+                                                background: msg.senderId === myUserId ? '#5865f2' : '#23a55a',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                flexShrink: 0, fontWeight: 'bold', color: 'white'
+                                            }}>
+                                                {msg.senderName.substring(0, 1).toUpperCase()}
+                                            </div>
+
+                                            {/* 메시지 박스 */}
+                                            <div style={{
+                                                flex: 1,
+                                                background: 'rgba(0, 0, 0, 0.15)',
+                                                border: '1px solid rgba(255, 255, 255, 0.05)',
+                                                borderRadius: '0 12px 12px 12px',
+                                                padding: '8px 14px',
+                                                width: '100%',
+                                                boxSizing: 'border-box'
+                                            }}>
+                                                <div style={{
+                                                    color: '#dbdee1',
+                                                    fontSize: '0.95rem',
+                                                    lineHeight: '1.4',
+                                                    wordBreak: 'break-word',
+                                                }}>
+                                                    {msg.content}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            <div ref={chatEndRef} />
+                        </div>
+
+                        {/* 디스코드 스타일 입력창 */}
+                        <div style={{ padding: '0 16px 16px 16px' }}>
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                background: '#383a40',
+                                borderRadius: '8px',
+                                padding: '0 12px',
+                                gap: '12px'
+                            }}>
+                                <PlusCircle size={22} style={{ color: '#b5bac1', cursor: 'pointer' }} />
+                                <input
+                                    value={chatInput}
+                                    onChange={e => setChatInput(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && handleSendChat()}
+                                    placeholder={`Message #${currentChannel.name}`}
+                                    style={{
+                                        flex: 1,
+                                        border: 'none',
+                                        background: 'transparent',
+                                        color: '#dbdee1',
+                                        padding: '11px 0',
+                                        fontSize: '0.95rem',
+                                        outline: 'none'
+                                    }}
+                                />
+                                <div style={{ display: 'flex', gap: '10px', color: '#b5bac1' }}>
+                                    <Gift size={20} style={{ cursor: 'pointer' }} />
+                                    <StickyNote size={20} style={{ cursor: 'pointer' }} />
+                                    <Smile size={20} style={{ cursor: 'pointer' }} />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* 하단 컨트롤 바: 디스코드 하단 느낌 */}
+            <div style={{
+                padding: '8px 16px',
+                background: 'rgba(35, 36, 40, 0.9)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                borderTop: '1px solid rgba(0, 0, 0, 0.2)'
+            }}>
+                <div style={{ display: 'flex', gap: '4px' }}>
                     <button
                         onClick={() => setIsMicMuted(!isMicMuted)}
-                        style={{ padding: '8px', borderRadius: '4px', background: isMicMuted ? '#ed4245' : 'transparent', border: 'none', cursor: 'pointer', color: 'white' }}
-                        className="hover:bg-white/10"
-                        title={isMicMuted ? "Unmute" : "Mute"}
+                        style={{
+                            padding: '8px', borderRadius: '4px',
+                            background: isMicMuted ? 'rgba(242, 63, 67, 0.2)' : 'transparent',
+                            border: 'none', cursor: 'pointer', color: isMicMuted ? '#f23f43' : '#dbdee1',
+                            transition: 'all 0.2s'
+                        }}
+                        className="control-btn"
                     >
-                        {isMicMuted ? <MicOff size={18} /> : <Mic size={18} />}
+                        {isMicMuted ? <MicOff size={20} /> : <Mic size={20} />}
                     </button>
                     <button
                         onClick={() => setIsDeafened(!isDeafened)}
-                        style={{ padding: '8px', borderRadius: '4px', background: isDeafened ? '#ed4245' : 'transparent', border: 'none', cursor: 'pointer', color: 'white' }}
-                        className="hover:bg-white/10"
-                        title={isDeafened ? "Undeafen" : "Deafen"}
+                        style={{
+                            padding: '8px', borderRadius: '4px',
+                            background: isDeafened ? 'rgba(242, 63, 67, 0.2)' : 'transparent',
+                            border: 'none', cursor: 'pointer', color: isDeafened ? '#f23f43' : '#dbdee1',
+                            transition: 'all 0.2s'
+                        }}
+                        className="control-btn"
                     >
-                        {isDeafened ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                        {isDeafened ? <VolumeX size={20} /> : <Volume2 size={20} />}
                     </button>
                 </div>
-                <button
-                    onClick={handleDisconnect}
-                    style={{ padding: '8px', borderRadius: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#ed4245' }}
-                    className="hover:bg-red-500/10"
-                    title="Disconnect"
-                >
-                    <PhoneOff size={20} />
-                </button>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                        onClick={() => setShowChat(!showChat)}
+                        style={{
+                            padding: '8px', borderRadius: '4px',
+                            background: 'transparent',
+                            border: 'none', cursor: 'pointer', color: '#dbdee1',
+                        }}
+                        className="control-btn"
+                    >
+                        <ChevronDown size={20} style={{ transform: showChat ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.3s' }} />
+                    </button>
+                    <button
+                        onClick={handleDisconnect}
+                        style={{
+                            padding: '8px', borderRadius: '4px',
+                            background: 'rgba(242, 63, 67, 0.1)',
+                            border: 'none', cursor: 'pointer', color: '#f23f43',
+                            transition: 'all 0.2s'
+                        }}
+                        className="disconnect-btn"
+                    >
+                        <PhoneOff size={20} />
+                    </button>
+                </div>
+                <style>{`
+                    .control-btn:hover { background: rgba(255, 255, 255, 0.05) !important; color: #fff !important; }
+                    .disconnect-btn:hover { background: #f23f43 !important; color: #fff !important; }
+                `}</style>
             </div>
         </div>
     );

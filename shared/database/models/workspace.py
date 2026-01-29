@@ -152,7 +152,7 @@ class VoiceChat(Base):
     __table_args__ = {'extend_existing': True}
 
     id = Column(String(10), primary_key=True)
-    workspace_id = Column(Integer, ForeignKey("work_space.id"), nullable=False)
+    channel_id = Column(String(50), ForeignKey("voice_channel.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(),
