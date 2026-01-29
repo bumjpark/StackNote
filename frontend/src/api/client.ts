@@ -1,8 +1,8 @@
 import axios from 'axios';
 
 // Base URL for the backend API
-// Assuming default FastAPI port is 8000. Adjust if needed.
-const API_BASE_URL = 'http://localhost:8000';
+// Use '/api' so requests go through Vite Proxy -> backend:8000 (Docker internal)
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 const client = axios.create({
     baseURL: API_BASE_URL,

@@ -12,11 +12,12 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 의존성 파일 복사 및 설치
-COPY requirements.txt .
+COPY voice-backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 앱 코드 복사
-COPY . .
+COPY voice-backend .
+COPY shared ./shared
 
 # 포트 노출 (Docker 내부)
 EXPOSE 8000

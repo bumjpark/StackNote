@@ -7,8 +7,28 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    allowedHosts: true, // Allow Cloudflare/Tunnel hosts
     watch: {
       usePolling: true,
     },
+    // Proxy for Cloudflare Tunnel compatibility
+    proxy: {
+      '/api': {
+        target: 'http://backend:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+        secure: false,
+      },
+      '/uploads': {
+        target: 'http://backend:8000',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/ws': {
+        target: 'ws://voice-backend:8000',
+        ws: true,
+        changeOrigin: true,
+      },
+    }
   },
 })

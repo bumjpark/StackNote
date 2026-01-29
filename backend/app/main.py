@@ -1,9 +1,8 @@
 from fastapi import FastAPI
 from app.auth import router as user_router
 from app.workspace import router as workspace_router
-from app.routers import block as block_router
-from app.pdf import router as pdf_router
-from app.core.database import engine, Base
+from app.workspace import block_router
+from shared.database.core.database import engine, Base
 import time
 import logging
 from sqlalchemy.exc import OperationalError
@@ -66,7 +65,16 @@ def wait_for_db():
 wait_for_db()
 
 # 라우터 등록
-app.include_router(user_router.router)
+app.include_router(user_router.router, prefix="/users")
 app.include_router(workspace_router.router)
 app.include_router(block_router.router)
-app.include_router(pdf_router.router)
+
+# 정적 파일 마운트 (이미지 서빙용)
+from fastapi.staticfiles import StaticFiles
+import os
+
+UPLOAD_DIR = "/app/uploads"
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
+
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import api from '../api/client';
 
 // Types
@@ -16,6 +16,13 @@ export interface VoiceChannel {
     users: string[]; // User IDs mock
 }
 
+export interface WorkspaceMember {
+    id: number;
+    email: string;
+    name: string;
+    role: string;
+}
+
 export interface Workspace {
     id: string;
     name: string;
@@ -23,6 +30,7 @@ export interface Workspace {
     privatePages: Page[];
     teamPages: Page[];
     voiceChannels: VoiceChannel[];
+    members: WorkspaceMember[];
 }
 
 interface WorkspaceContextType {
@@ -45,6 +53,8 @@ interface WorkspaceContextType {
     refreshWorkspaces: () => Promise<void>;
     getInvitations: () => Promise<any[]>;
     respondInvitation: (workspaceId: string, accept: boolean) => Promise<void>;
+    fetchMembers: (workspaceId: string) => Promise<void>;
+    uploadPdf: (workspaceId: string, file: File) => Promise<void>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -61,7 +71,10 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
     const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
     const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string>('');
     const [currentPageId, setCurrentPageId] = useState<string>('');
-    const [currentChannelId, setCurrentChannelId] = useState<string | null>(null);
+
+    // Voice State - Globally persistent
+    const [activeVoiceChannelId, setActiveVoiceChannelId] = useState<string | null>(null);
+    const [activeVoiceWorkspaceId, setActiveVoiceWorkspaceId] = useState<string | null>(null);
 
     const refreshWorkspaces = async () => {
         try {
@@ -72,7 +85,10 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             }
 
             const response = await api.get(`/workspace/user/${userId}`);
-            const fetchedWorkspaces = response.data;
+            const fetchedWorkspaces = response.data.map((ws: any) => ({
+                ...ws,
+                members: ws.members || [] // Initialize members if missing
+            }));
             setWorkspaces(fetchedWorkspaces);
 
             if (fetchedWorkspaces.length > 0) {
@@ -107,7 +123,13 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
     };
 
     const currentPage = findPage(currentPageId, currentWorkspace);
-    const currentChannel = currentWorkspace?.voiceChannels.find(c => c.id === currentChannelId) || null;
+
+    // Find the active voice channel across ALL workspaces
+    const activeVoiceChannel = (() => {
+        if (!activeVoiceChannelId || !activeVoiceWorkspaceId) return null;
+        const ws = workspaces.find(w => w.id === activeVoiceWorkspaceId);
+        return ws?.voiceChannels.find(c => c.id === activeVoiceChannelId) || null;
+    })();
 
     const createWorkspace = async (name: string, type: 'private' | 'team') => {
         try {
@@ -128,7 +150,8 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
                 type: type, // Use provided type
                 privatePages: [],
                 teamPages: [],
-                voiceChannels: []
+                voiceChannels: [],
+                members: []
             };
 
             setWorkspaces([...workspaces, newWorkspace]);
@@ -175,7 +198,10 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
     const createChannel = async (workspaceId: string, name: string) => {
         try {
             const userId = localStorage.getItem('user_id');
-            if (!userId) return;
+            if (!userId) {
+                alert("Please log in to create a channel");
+                return;
+            }
 
             const response = await api.post('/workspace/voice_channel', {
                 user_id: parseInt(userId),
@@ -193,8 +219,13 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
                 }
                 return w;
             }));
-        } catch (error) {
+
+            // Optionally auto-join created channel? Let's leave it manual for now.
+        } catch (error: any) {
             console.error("Failed to create voice channel:", error);
+            if (error.response && error.response.status === 403) {
+                alert("You don't have permission to create voice channels here.");
+            }
         }
     };
 
@@ -222,7 +253,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
         }
     };
 
-    const getInvitations = async () => {
+    const getInvitations = useCallback(async () => {
         try {
             const userId = localStorage.getItem('user_id');
             if (!userId) return [];
@@ -232,7 +263,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             console.error("Failed to fetch invitations:", error);
             return [];
         }
-    };
+    }, []);
 
     const respondInvitation = async (workspaceId: string, accept: boolean) => {
         try {
@@ -269,7 +300,25 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
     };
 
     const selectChannel = (channelId: string) => {
-        setCurrentChannelId(channelId);
+        // If clicking the same channel, maybe disconnect? Or just nothing.
+        // For now, joining replaces previous connection.
+        // We need to know which workspace this channel belongs to
+        // Because channelId itself might not be enough if we didn't search all workspaces
+
+        if (!channelId) {
+            setActiveVoiceChannelId(null);
+            setActiveVoiceWorkspaceId(null);
+            return;
+        }
+
+        // Find which workspace has this channel
+        for (const ws of workspaces) {
+            if (ws.voiceChannels.find(c => c.id === channelId)) {
+                setActiveVoiceWorkspaceId(ws.id);
+                setActiveVoiceChannelId(channelId);
+                return;
+            }
+        }
     };
 
     const updatePageContent = (pageId: string, content: string) => {
@@ -373,12 +422,70 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
         }
     };
 
+    const fetchMembers = useCallback(async (workspaceId: string) => {
+        console.log(`[WorkspaceContext] fetchMembers called for ${workspaceId}`);
+        try {
+            const response = await api.get(`/workspace/${workspaceId}/members`);
+            console.log(`[WorkspaceContext] fetchMembers success:`, response.data);
+            setWorkspaces(prev => prev.map(ws =>
+                ws.id === workspaceId ? { ...ws, members: response.data } : ws
+            ));
+        } catch (error) {
+            console.error('[WorkspaceContext] Failed to fetch members:', error);
+        }
+    }, []);
+
+    const uploadPdf = async (workspaceId: string, file: File) => {
+        try {
+            const userId = localStorage.getItem('user_id');
+            if (!userId) {
+                alert("Please login first");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('workspace_id', workspaceId);
+            formData.append('user_id', userId);
+            formData.append('file', file);
+
+            const response = await api.post('/workspace/pages/upload-pdf', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+
+            // Response format expected: { status: "success", page_id: 123, ... }
+            if (response.data.status === 'success') {
+                const newPageId = String(response.data.page_id);
+                // const newTitle = file.name.replace('.pdf', '');
+
+                // Assuming it's created as a private page type="doc" (treated as private usually?)
+                // Or verify backend logic. Backend sets page_type="doc".
+                // We need to decide where to put it. Let's assume private for now or refresh?
+                // Actually backend process_pdf_upload creates it.
+                // It sets page_type="doc". 
+                // Let's assume it's like a private page or we re-fetch workspace.
+                // Safest is to refetch workspace to get correct structure.
+                await refreshWorkspaces();
+
+                // Select the new page
+                // Need to find it after refresh. 
+                // Since refresh is async, we can set ID after.
+                // Ideally refresh waits.
+                setCurrentPageId(newPageId);
+            }
+        } catch (error) {
+            console.error("Failed to upload PDF:", error);
+            alert("Failed to upload PDF. Please try again.");
+        }
+    };
+
     return (
         <WorkspaceContext.Provider value={{
             workspaces,
             currentWorkspace,
             currentPage,
-            currentChannel,
+            currentChannel: activeVoiceChannel, // Mapped to active global state
             createWorkspace,
             createPage,
 
@@ -394,7 +501,9 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             deletePage,
             refreshWorkspaces,
             getInvitations,
-            respondInvitation
+            respondInvitation,
+            fetchMembers,
+            uploadPdf
         }}>
             {children}
         </WorkspaceContext.Provider>
