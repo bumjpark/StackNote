@@ -71,14 +71,24 @@ const VoiceManager: React.FC = () => {
     const remoteAudioElements = useRef<Record<string, HTMLAudioElement>>({}); // userId -> audio element for playback
     const animationRef = useRef<number | null>(null);
 
-    const myUserId = useRef<string>(sessionStorage.getItem('user_id') || `user-${Math.floor(Math.random() * 1000)}`).current;
+    const myUserId = useRef<string>(localStorage.getItem('user_id') || `user-${Math.floor(Math.random() * 1000)}`).current;
     // Create a unique session ID for this specific tab/connection to allow same-user testing
     const mySessionId = useRef<string>(`${myUserId}-${Math.random().toString(36).substr(2, 5)}`).current;
 
     // Attempt to get email, fallback to ID based name
     const myUsername = useRef<string>(
-        sessionStorage.getItem('user_email') || `User ${myUserId.substring(0, 4)}`
+        localStorage.getItem('user_email')?.split('@')[0] || `User ${myUserId.substring(0, 4)}`
     ).current;
+
+    // Helper to get consistent color from userId
+    const getUserColor = (userId: string) => {
+        let hash = 0;
+        for (let i = 0; i < userId.length; i++) {
+            hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const h = Math.abs(hash % 360);
+        return `hsl(${h}, 50%, 50%)`;
+    };
 
     const handleSendChat = async (content: string = chatInput) => {
         const text = content.trim();
@@ -235,11 +245,13 @@ const VoiceManager: React.FC = () => {
 
         const participants: VoiceParticipant[] = [
             { userId: myUserId, username: myUsername, isSpeaking: isSpeaking },
-            ...Object.entries(peersInfo).map(([uid, info]) => ({
-                userId: uid,
-                username: info.username,
-                isSpeaking: info.isSpeaking
-            }))
+            ...Object.entries(peersInfo)
+                .filter(([uid]) => uid !== myUserId) // Prevent duplicate if myUserId is in peersInfo
+                .map(([uid, info]) => ({
+                    userId: uid,
+                    username: info.username,
+                    isSpeaking: info.isSpeaking
+                }))
         ];
 
         setChannelParticipants(currentChannel.id, participants);
@@ -314,10 +326,26 @@ const VoiceManager: React.FC = () => {
             if (!remoteAudioElements.current[id]) {
                 console.log(`Creating new Audio element for ${id}`);
                 const audio = new Audio();
+                audio.autoplay = true; // Enable autoplay
                 audio.srcObject = stream;
                 audio.volume = 1.0;
                 audio.muted = isDeafened; // Apply current deafen state
-                audio.play().catch(e => console.error("Audio playback failed:", e));
+
+                // Better error handling for playback
+                audio.play().then(() => {
+                    console.log(`Audio playback started successfully for ${id}`);
+                }).catch(e => {
+                    console.error(`Audio playback failed for ${id}:`, e);
+                    // Retry after user interaction
+                    const retryPlay = () => {
+                        audio.play().then(() => {
+                            console.log(`Audio playback retry succeeded for ${id}`);
+                            document.removeEventListener('click', retryPlay);
+                        }).catch(err => console.error(`Audio playback retry failed for ${id}:`, err));
+                    };
+                    document.addEventListener('click', retryPlay, { once: true });
+                });
+
                 remoteAudioElements.current[id] = audio;
             } else {
                 // Update existing if stream changed
@@ -729,7 +757,7 @@ const VoiceManager: React.FC = () => {
                                             {/* 아바타 */}
                                             <div style={{
                                                 width: '40px', height: '40px', borderRadius: '50%',
-                                                background: msg.senderId === myUserId ? '#5865f2' : '#23a55a',
+                                                background: getUserColor(msg.senderId),
                                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                 flexShrink: 0, fontWeight: 'bold', color: 'white'
                                             }}>

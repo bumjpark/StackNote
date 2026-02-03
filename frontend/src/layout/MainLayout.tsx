@@ -445,7 +445,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                     {getPageIcon(page, <Lock size={14} />)}
                                 </div>
                                 <span
-                                    onClick={() => selectPage(page.id)}
+                                    onClick={() => {
+                                        selectChannel(''); // Close voice chat
+                                        selectPage(page.id);
+                                    }}
                                     style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1, cursor: 'pointer' }}
                                 >{page.title || 'Untitled'}</span>
                                 <Trash2
@@ -518,7 +521,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                     {getPageIcon(page, <Users size={14} />)}
                                 </div>
                                 <span
-                                    onClick={() => selectPage(page.id)}
+                                    onClick={() => {
+                                        selectChannel(''); // Close voice chat
+                                        selectPage(page.id);
+                                    }}
                                     style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1, cursor: 'pointer' }}
                                 >{page.title || 'Untitled'}</span>
                                 <Trash2
@@ -539,8 +545,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         )}
                     </div>
 
-                    {/* Voice Channels (Visible in Team Workspace OR when viewing a Team Page) */}
-                    {(currentWorkspace?.type === 'team' || currentPage?.type === 'team' || currentWorkspace?.voiceChannels.some(vc => vc.id === currentChannel?.id)) && (
+                    {/* Voice Channels - Always Visible */}
+                    {currentWorkspace?.voiceChannels && currentWorkspace.voiceChannels.length > 0 && (
                         <div style={{ marginBottom: '1.5rem' }}>
                             <div style={{ padding: '0 0.75rem 0.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-secondary)' }}>
                                 <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>VOICE CHANNELS</span>
