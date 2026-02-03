@@ -5,7 +5,7 @@ from sqlalchemy import func
 import uuid
 
 from shared.database.models.user import User
-from shared.database.models.workspace import WorkSpace, Page, VoiceChannel, WorkspaceMember
+from shared.database.models.workspace import WorkSpace, Page, VoiceChannel, WorkspaceMember, VoiceChat
 from shared.schemas.workspace import WorkspaceRequest, PageListCreateRequest, VoiceChannelCreateQuery, WorkspaceInviteRequest
 from shared.schemas.block import BlockCreate, BlockUpdate
 from fastapi import HTTPException
@@ -512,3 +512,56 @@ def get_workspace_members(db: Session, workspace_id: int):
             })
             
     return result
+def get_voice_chat_history(db: Session, channel_id: str):
+    """
+    특정 음성 채널의 채팅 내역 조회 (사용자 이름 포함)
+    """
+    results = db.query(VoiceChat, User.email_id).join(
+        User, VoiceChat.user_id == User.id
+    ).filter(
+        VoiceChat.channel_id == channel_id,
+        VoiceChat.is_deleted == False
+    ).order_by(VoiceChat.created_at.asc()).all()
+
+    return [
+        {
+            "id": chat.id,
+            "channel_id": chat.channel_id,
+            "user_id": chat.user_id,
+            "sender_name": email_id.split('@')[0],
+            "chat_content": chat.chat_content,
+            "created_at": chat.created_at.isoformat() if chat.created_at else None
+        }
+        for chat, email_id in results
+    ]
+
+def save_voice_chat(db: Session, channel_id: str, user_id: int, content: str, chat_id: str = None):
+    """
+    음성 채팅 내역 저장
+    """
+    new_chat = VoiceChat(
+        id=chat_id or str(uuid.uuid4())[:10], # VoiceChat 모델의 id가 String(10)임
+        channel_id=channel_id,
+        user_id=user_id,
+        chat_content=content
+    )
+    db.add(new_chat)
+    db.commit()
+    db.refresh(new_chat)
+    return new_chat
+
+def delete_voice_chat(db: Session, chat_id: str) -> bool:
+    """
+    음성 채팅 내역 삭제 (Soft Delete)
+    """
+    chat = db.query(VoiceChat).filter(
+        VoiceChat.id == chat_id,
+        VoiceChat.is_deleted == False
+    ).first()
+    
+    if not chat:
+        return False
+        
+    chat.is_deleted = True
+    db.commit()
+    return True
