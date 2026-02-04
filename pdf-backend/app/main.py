@@ -39,7 +39,7 @@ async def analyze_pdf(file: UploadFile = File(...)):
     
     if is_processing:
         # 이미 처리 중이면 423 Locked 반환
-        return HTTPException(
+        raise HTTPException(
             status_code=423, 
             detail={
                 "message": "현재 다른 PDF 작업을 실행 중입니다. 작업이 완료되면 알려드리겠습니다.",
@@ -53,20 +53,13 @@ async def analyze_pdf(file: UploadFile = File(...)):
         tmp_path = tmp_file.name
         
     global is_processing
-    
-    # 세마포어 획득 (Non-blocking check은 위에서 했지만, race condition 방지 위해)
-    # 다만 여기선 1개 제한이므로 is_processing 플래그로 충분할 수 있으나,
-    # 정확한 동기화를 위해 세마포어 사용 권장.
-    # 하지만 사용자 요구사항은 "바로 에러 반환"이므로 acquire()로 대기하면 안됨.
-    
-    if list(app.router.lifespan_context(app)): 
-        # (FastAPI 내부 로직 복잡함, 간단히 전역변수 + 세마포어 조합 사용)
-        pass
+    lock_acquired = False
 
     try:
         # 락 획득 시도
         if not sem.locked():
              await sem.acquire()
+             lock_acquired = True
              is_processing = True
         else:
              raise HTTPException(status_code=423, detail="Server is busy")
@@ -89,8 +82,8 @@ async def analyze_pdf(file: UploadFile = File(...)):
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
             
-        # 락 해제
-        if is_processing:
+        # 락 해제 (내가 획득했을 때만 해제)
+        if lock_acquired:
             sem.release()
             is_processing = False
         
