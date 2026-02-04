@@ -595,7 +595,8 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
                 return;
             }
 
-            alert("Failed to upload PDF. Please try again.");
+            // alert("Failed to upload PDF. Please try again.");
+            console.warn("PDF upload request ended (possibly timed out), but background processing might still be running.");
         }
     };
 
