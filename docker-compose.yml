@@ -39,10 +39,6 @@ services:
     volumes:
       - ./pdf-backend/app:/app/app
       - ./backend/app/uploads:/app/uploads # 공유 볼륨 (이미지 저장용)
-    deploy:
-      resources:
-        limits:
-          cpus: '3.0'
     restart: always
 
   frontend:
