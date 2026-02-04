@@ -11,6 +11,23 @@ from shared.schemas.block import BlockCreate
 # PDF Backend URL (Docker Compose Service Name)
 PDF_BACKEND_URL = "http://pdf-backend:8000"
 
+import logging
+import os
+
+# 로깅 설정
+UPLOAD_DIR = "/app/uploads"
+log_file_path = os.path.join(UPLOAD_DIR, "main_backend_pdf.log")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(log_file_path, mode='a', encoding='utf-8')
+    ]
+)
+logger = logging.getLogger("pdf_service")
+
 async def process_pdf_upload(db: Session, workspace_id: int, user_id: int, file: UploadFile):
     """
     1. PDF 파일을 pdf-backend로 전송하여 분석 요청
@@ -19,7 +36,7 @@ async def process_pdf_upload(db: Session, workspace_id: int, user_id: int, file:
     """
     
     # 1. pdf-backend 호출
-    print(f"📡 Sending PDF to {PDF_BACKEND_URL}...")
+    logger.info(f"📡 Sending PDF to {PDF_BACKEND_URL}...")
     
     async with httpx.AsyncClient(timeout=6000.0) as client:
         # 파일 스트림을 그대로 전달
@@ -28,11 +45,12 @@ async def process_pdf_upload(db: Session, workspace_id: int, user_id: int, file:
             response = await client.post(f"{PDF_BACKEND_URL}/analyze", files=files)
             response.raise_for_status()
             result = response.json()
+            logger.info("✅ Received response from PDF backend")
         except httpx.RequestError as e:
-            print(f"❌ Connection error: {e}")
+            logger.error(f"❌ Connection error: {e}")
             raise HTTPException(status_code=503, detail="PDF analysis service unavailable")
         except httpx.HTTPStatusError as e:
-            print(f"❌ API error: {e.response.text}")
+            logger.error(f"❌ API error: {e.response.text}")
             if e.response.status_code == 423:
                  raise HTTPException(status_code=423, detail="PDF Backend is busy")
             raise HTTPException(status_code=e.response.status_code, detail="PDF analysis failed")
@@ -51,26 +69,28 @@ async def check_pdf_status():
             return {"is_processing": False} # 에러 시 처리 중이 아니라고 가정하거나 에러 처리
 
     # 2. 페이지 생성
-    pdf_filename = file.filename
-    page_name = pdf_filename.replace(".pdf", "")
-    
-    new_page = Page(
-        workspace_id=workspace_id,
-        user_id=user_id,
-        page_name=page_name,
-        page_type="doc", # 문서 타입
-        is_deleted=False
-    )
-    db.add(new_page)
-    db.commit()
-    db.refresh(new_page)
-    
-    page_id = new_page.id
-    print(f"✅ Page created: {page_id} ({page_name})")
-    
-    # 3. 블록 생성 및 저장
-    blocks_data = result.get("blocks", [])
-    created_blocks = []
+    try:
+        pdf_filename = file.filename
+        page_name = pdf_filename.replace(".pdf", "")
+        
+        new_page = Page(
+            workspace_id=workspace_id,
+            user_id=user_id,
+            page_name=page_name,
+            page_type="doc", # 문서 타입
+            is_deleted=False
+        )
+        db.add(new_page)
+        db.commit()
+        db.refresh(new_page)
+        
+        page_id = new_page.id
+        logger.info(f"✅ Page created: {page_id} ({page_name})")
+        
+        # 3. 블록 생성 및 저장
+        blocks_data = result.get("blocks", [])
+        logger.info(f"🧱 Processing {len(blocks_data)} blocks...")
+        created_blocks = []
     
     # 순서 보장을 위해 prev_block_id 체이닝 관리
     prev_block_id = None
@@ -143,11 +163,16 @@ async def check_pdf_status():
         if i < len(created_blocks) - 1:
             created_blocks[i].next_block_id = created_blocks[i+1].id
             
-    # 다시 DB에 반영 (Add는 루프에서 했으므로 Commit만)
-    db.commit()
-    
-    return {
-        "status": "success",
-        "page_id": page_id,
-        "block_count": len(created_blocks)
-    }
+        # 다시 DB에 반영 (Add는 루프에서 했으므로 Commit만)
+        db.commit()
+        logger.info(f"✅ Saved {len(created_blocks)} blocks to DB.")
+        
+        return {
+            "status": "success",
+            "page_id": page_id,
+            "block_count": len(created_blocks)
+        }
+    except Exception as e:
+        logger.error(f"❌ Error saving to DB: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to save PDF content: {str(e)}")
