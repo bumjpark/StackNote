@@ -57,6 +57,13 @@ def create_workspace(
         )
     )
 
+@router.get("/pdf-status")
+async def get_pdf_status():
+    """
+    PDF Backend의 현재 처리 상태를 반환합니다.
+    """
+    return await pdf_service.check_pdf_status()
+
 @router.post("/pages/upload-pdf")
 async def upload_pdf_and_create_page(
     workspace_id: int = Body(...),

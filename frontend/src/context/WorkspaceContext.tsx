@@ -570,8 +570,31 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
                 // Ideally refresh waits.
                 setCurrentPageId(newPageId);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to upload PDF:", error);
+
+            if (error.response && (error.response.status === 423 || error.response.status === 503)) {
+                alert("현재 다른 PDF 작업을 실행중이니 이전 작업이 끝나면 알려드리겠습니다.");
+
+                // Polling logic
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const statusRes = await api.get('/workspace/pdf-status');
+                        const isProcessing = statusRes.data.is_processing;
+
+                        if (!isProcessing) {
+                            clearInterval(pollInterval);
+                            alert("PDF 작업 준비 완료");
+                        }
+                    } catch (pollError) {
+                        console.error("Polling error:", pollError);
+                        clearInterval(pollInterval);
+                    }
+                }, 3000); // 3초마다 확인
+
+                return;
+            }
+
             alert("Failed to upload PDF. Please try again.");
         }
     };
