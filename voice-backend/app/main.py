@@ -73,7 +73,9 @@ class ConnectionManager:
     async def broadcast_to_room(self, message: dict, room_id: str, exclude_user: str = None):
         """방에 있는 모든(또는 특정 유저 제외) 유저에게 메시지 전송"""
         if room_id in self.rooms:
-            for user_id, connection in self.rooms[room_id].items():
+            # Create a copy of items to avoid RuntimeError during iteration
+            room_users = list(self.rooms[room_id].items())
+            for user_id, connection in room_users:
                 if user_id != exclude_user:
                     try:
                         await connection.send_json(message)

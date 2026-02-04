@@ -72,8 +72,6 @@ const VoiceManager: React.FC = () => {
     const animationRef = useRef<number | null>(null);
 
     const myUserId = useRef<string>(localStorage.getItem('user_id') || `user-${Math.floor(Math.random() * 1000)}`).current;
-    // Create a unique session ID for this specific tab/connection to allow same-user testing
-    const mySessionId = useRef<string>(`${myUserId}-${Math.random().toString(36).substr(2, 5)}`).current;
 
     // Attempt to get email, fallback to ID based name
     const myUsername = useRef<string>(
@@ -127,7 +125,7 @@ const VoiceManager: React.FC = () => {
         if (!currentChannel) return;
         const roomId = currentChannel.id;
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/${roomId}/${mySessionId}`;
+        const wsUrl = `${protocol}//${window.location.host}/ws/${roomId}/${myUserId}`;
 
         console.log(`Connecting to Voice Server: ${wsUrl}`);
         ws.current = new WebSocket(wsUrl);
@@ -482,7 +480,11 @@ const VoiceManager: React.FC = () => {
     };
 
     const createPeerConnection = async (targetUserId: string, isInitiator: boolean) => {
-        if (peers.current[targetUserId]) return;
+        if (peers.current[targetUserId]) {
+            console.warn(`[VoiceManager] Closing existing peer for ${targetUserId} before new connection`);
+            peers.current[targetUserId].close();
+            delete peers.current[targetUserId];
+        }
 
         const peer = new RTCPeerConnection({
             iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]

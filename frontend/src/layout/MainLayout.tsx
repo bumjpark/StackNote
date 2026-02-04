@@ -32,6 +32,16 @@ const VoiceChannelItem: React.FC<VoiceChannelItemProps> = ({ channel, isActive, 
     const { voiceParticipants } = useWorkspace();
     const participants = voiceParticipants[channel.id] || [];
 
+    // Helper to get consistent color from userId
+    const getUserColor = (userId: string) => {
+        let hash = 0;
+        for (let i = 0; i < userId.length; i++) {
+            hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const h = Math.abs(hash % 360);
+        return `hsl(${h}, 50%, 50%)`;
+    };
+
     return (
         <div style={{ marginBottom: '4px' }}>
             {/* Channel Name */}
@@ -64,7 +74,7 @@ const VoiceChannelItem: React.FC<VoiceChannelItemProps> = ({ channel, isActive, 
                         <div key={p.userId} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <div style={{
                                 width: '22px', height: '22px', borderRadius: '50%',
-                                background: 'rgba(255,255,255,0.1)', // Keep background constant
+                                background: getUserColor(p.userId), // Use unique color per user
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 fontSize: '9px', color: 'white', fontWeight: 'bold',
                                 border: p.isSpeaking ? '2.5px solid #23a55a' : '2.5px solid transparent',
@@ -127,6 +137,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const [showNotifications, setShowNotifications] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [uploadingFileName, setUploadingFileName] = useState("");
+    const [isVoiceViewActive, setIsVoiceViewActive] = useState(false);
 
     // File Upload Ref
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -202,6 +213,25 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             setShowWorkspaceMenu(false);
         }
     };
+
+    // Switch view when channel selected
+    const handleChannelSelect = (channelId: string) => {
+        selectChannel(channelId);
+        setIsVoiceViewActive(true);
+    };
+
+    // Switch view when page selected
+    const handlePageSelect = (pageId: string) => {
+        selectPage(pageId);
+        setIsVoiceViewActive(false);
+    };
+
+    // Reset view if disconnected
+    useEffect(() => {
+        if (!currentChannel) {
+            setIsVoiceViewActive(false);
+        }
+    }, [currentChannel]);
 
     return (
         <div className="flex h-screen w-full overflow-hidden bg-bg-primary text-text-primary" style={{ display: 'flex', height: '100vh', width: '100%', overflow: 'hidden', position: 'relative' }}>
@@ -445,10 +475,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                     {getPageIcon(page, <Lock size={14} />)}
                                 </div>
                                 <span
-                                    onClick={() => {
-                                        selectChannel(''); // Close voice chat
-                                        selectPage(page.id);
-                                    }}
+                                    onClick={() => handlePageSelect(page.id)}
                                     style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1, cursor: 'pointer' }}
                                 >{page.title || 'Untitled'}</span>
                                 <Trash2
@@ -521,10 +548,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                     {getPageIcon(page, <Users size={14} />)}
                                 </div>
                                 <span
-                                    onClick={() => {
-                                        selectChannel(''); // Close voice chat
-                                        selectPage(page.id);
-                                    }}
+                                    onClick={() => handlePageSelect(page.id)}
                                     style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1, cursor: 'pointer' }}
                                 >{page.title || 'Untitled'}</span>
                                 <Trash2
@@ -560,7 +584,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                     key={channel.id}
                                     channel={channel}
                                     isActive={channel.id === currentChannel?.id}
-                                    onSelect={() => selectChannel(channel.id)}
+                                    onSelect={() => handleChannelSelect(channel.id)}
                                 />
                             ))}
                         </div>
@@ -627,20 +651,27 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                 position: 'relative',
                 background: 'var(--bg-primary)'
             }}>
-                {currentChannel ? (
-                    <div style={{ flex: 1, height: '100%', overflow: 'hidden' }}>
-                        <VoiceManager />
-                    </div>
-                ) : (
+                {/* Voice Manager - Hidden but active when in page view */}
+                {currentChannel && (
                     <div style={{
                         flex: 1,
                         height: '100%',
-                        overflowY: 'auto',
-                        position: 'relative'
+                        display: isVoiceViewActive ? 'block' : 'none'
                     }}>
-                        {children}
+                        <VoiceManager />
                     </div>
                 )}
+
+                {/* Page Content - Visible when voice view is NOT active */}
+                <div style={{
+                    flex: 1,
+                    height: '100%',
+                    overflowY: 'auto',
+                    position: 'relative',
+                    display: (!currentChannel || !isVoiceViewActive) ? 'block' : 'none'
+                }}>
+                    {children}
+                </div>
             </main>
         </div>
     );
