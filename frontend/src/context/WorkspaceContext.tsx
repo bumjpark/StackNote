@@ -590,7 +590,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
                         console.error("Polling error:", pollError);
                         clearInterval(pollInterval);
                     }
-                }, 3000); // 3초마다 확인
+                }, 60000); // 60초마다 확인
 
                 return;
             }
