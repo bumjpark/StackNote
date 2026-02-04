@@ -38,7 +38,7 @@ async def process_pdf_upload(db: Session, workspace_id: int, user_id: int, file:
     # 1. pdf-backend 호출
     logger.info(f"📡 Sending PDF to {PDF_BACKEND_URL}...")
     
-    async with httpx.AsyncClient(timeout=6000.0) as client:
+    async with httpx.AsyncClient(timeout=None) as client:
         # 파일 스트림을 그대로 전달
         files = {"file": (file.filename, file.file, file.content_type)}
         try:

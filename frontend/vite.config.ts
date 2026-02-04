@@ -18,8 +18,8 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
         secure: false,
-        timeout: 1800000, // 30 minutes
-        proxyTimeout: 1800000,
+        timeout: 3600000, // 60 minutes
+        proxyTimeout: 3600000,
       },
       '/uploads': {
         target: 'http://backend:8000',
