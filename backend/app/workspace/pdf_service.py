@@ -70,8 +70,10 @@ async def check_pdf_status():
 
     # 2. 페이지 생성
     try:
+        logger.info("🔹 Starting Page creation...")
         pdf_filename = file.filename
         page_name = pdf_filename.replace(".pdf", "")
+        logger.info(f"🔹 Page name extracted: {page_name}")
         
         new_page = Page(
             workspace_id=workspace_id,
@@ -81,7 +83,11 @@ async def check_pdf_status():
             is_deleted=False
         )
         db.add(new_page)
+        logger.info("🔹 Page added to session. Committing...")
+        
         db.commit()
+        logger.info("🔹 Page committed.")
+        
         db.refresh(new_page)
         
         page_id = new_page.id
