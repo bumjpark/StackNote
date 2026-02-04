@@ -570,35 +570,45 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
                 // Ideally refresh waits.
                 setCurrentPageId(newPageId);
             }
+
         } catch (error: any) {
             console.error("Failed to upload PDF:", error);
 
-            if (error.response && (error.response.status === 423 || error.response.status === 503)) {
+            // 423(Busy) or Timeout/Network Error -> Start Polling
+            // If error is 423, alert user about queue.
+            // If error is timeout (no response or ECONNABORTED), log warning and poll.
+
+            const isBusy = error.response && (error.response.status === 423 || error.response.status === 503);
+
+            if (isBusy) {
                 alert("현재 다른 PDF 작업을 실행중이니 이전 작업이 끝나면 알려드리겠습니다.");
-
-                // Polling logic
-                const pollInterval = setInterval(async () => {
-                    try {
-                        const statusRes = await api.get('/workspace/pdf-status');
-                        const isProcessing = statusRes.data.is_processing;
-
-                        if (!isProcessing) {
-                            clearInterval(pollInterval);
-                            alert("PDF 작업 준비 완료");
-                        }
-                    } catch (pollError) {
-                        console.error("Polling error:", pollError);
-                        clearInterval(pollInterval);
-                    }
-                }, 60000); // 60초마다 확인
-
-                return;
+            } else {
+                console.warn("connection lost or timed out. Switching to polling mode...");
             }
 
-            // alert("Failed to upload PDF. Please try again.");
-            console.warn("PDF upload request ended (possibly timed out), but background processing might still be running.");
+            // Polling logic for BOTH cases (Busy OR Timeout)
+            const pollInterval = setInterval(async () => {
+                try {
+                    const statusRes = await api.get('/workspace/pdf-status');
+                    const isProcessing = statusRes.data.is_processing;
+
+                    if (!isProcessing) {
+                        clearInterval(pollInterval);
+
+                        // 작업이 끝났음을 감지하면:
+                        // 1. 워크스페이스 새로고침 (새 페이지 확인용)
+                        await refreshWorkspaces();
+                        alert("PDF 작업이 완료되었습니다."); // 최종 완료 알림
+                    }
+                } catch (pollError) {
+                    console.error("Polling error:", pollError);
+                    // Don't clear interval here on simple errors, keep retrying potentially
+                    // But if strict failure, maybe clear. Let's keep retrying for robustness.
+                }
+            }, 60000); // 60초마다 확인
         }
-    };
+    }
+
 
     return (
         <WorkspaceContext.Provider value={{
