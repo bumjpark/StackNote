@@ -132,6 +132,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleUploadClick = () => {
+        if (isUploading) {
+            alert("현재 파일 업로드 중입니다. 잠시만 기다려주세요.");
+            return;
+        }
         if (!currentWorkspace) {
             alert("No workspace selected");
             return;

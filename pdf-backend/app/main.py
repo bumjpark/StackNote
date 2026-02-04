@@ -37,7 +37,13 @@ async def analyze_pdf(file: UploadFile = File(...)):
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
     
+    global is_processing
+    
+    # [Debug] 요청 수신 확인
+    print(f"🔒 Request received. Current is_processing: {is_processing}")
+
     if is_processing:
+        print("❌ Blocked: Analysis in progress")
         # 이미 처리 중이면 423 Locked 반환
         raise HTTPException(
             status_code=423, 
@@ -46,28 +52,22 @@ async def analyze_pdf(file: UploadFile = File(...)):
                 "code": "loked"
             }
         )
+    
+    # 플래그 설정 (Atomic in asyncio single loop)
+    is_processing = True
+    print("✅ Lock acquired. Starting processing...")
 
     # 임시 파일로 저장
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
         shutil.copyfileobj(file.file, tmp_file)
         tmp_path = tmp_file.name
         
-    global is_processing
-    lock_acquired = False
-
     try:
-        # 락 획득 시도
-        if not sem.locked():
-             await sem.acquire()
-             lock_acquired = True
-             is_processing = True
-        else:
-             raise HTTPException(status_code=423, detail="Server is busy")
-             
         # 프로세서 실행 (스레드 풀에서 실행하여 이벤트 루프 차단 방지)
         loop = asyncio.get_running_loop()
         # run_in_executor의 첫 인자가 None이면 기본 executor 사용
         result = await loop.run_in_executor(None, processor.process_pdf, tmp_path)
+        print("✅ Processing completed successfully.")
         return result
         
     except HTTPException as he:
@@ -75,6 +75,7 @@ async def analyze_pdf(file: UploadFile = File(...)):
     except Exception as e:
         import traceback
         traceback.print_exc()
+        print(f"❌ Error during processing: {e}")
         raise HTTPException(status_code=500, detail=f"PDF processing failed: {str(e)}")
         
     finally:
@@ -82,9 +83,8 @@ async def analyze_pdf(file: UploadFile = File(...)):
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
             
-        # 락 해제 (내가 획득했을 때만 해제)
-        if lock_acquired:
-            sem.release()
-            is_processing = False
+        # 플래그 해제
+        is_processing = False
+        print("🔓 Lock released.")
         
 
