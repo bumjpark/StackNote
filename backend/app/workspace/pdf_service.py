@@ -92,77 +92,77 @@ async def check_pdf_status():
         logger.info(f"🧱 Processing {len(blocks_data)} blocks...")
         created_blocks = []
     
-    # 순서 보장을 위해 prev_block_id 체이닝 관리
-    prev_block_id = None
-    
-    import uuid
-    
-    for item in blocks_data:
-        block_id = str(uuid.uuid4())
+        # 순서 보장을 위해 prev_block_id 체이닝 관리
+        prev_block_id = None
         
-        # BlockNote 타입 매핑
-        # processor.py에서 이미 heading, paragraph, bulletListItem 등으로 변환됨
-        b_type = item["type"]
-        b_props = item.get("props", {})
+        import uuid
         
-        # 이미지의 경우 url을 props에 설정해야 함
-        content = [] # BlockNote content format is usually a list of inline objects
-        
-        if b_type == "paragraph" or b_type == "heading" or b_type == "bulletListItem":
-            # 텍스트가 있을 경우
-             if item.get("text"):
-                content = [{"type": "text", "text": item["text"], "styles": {}}]
-        
-        elif b_type == "image":
-            # 이미지는 content가 아니라 props.url 사용
-             if item.get("image_path"):
-                 b_props["url"] = item["image_path"]
-                 b_props["name"] = item.get("image_filename", "image.png")
-                 # 이미지에 캡션이 있다면 content로 넣을 수도 있음
-                 
-        elif b_type == "table":
-             # 테이블도 이미지로 처리되었으면 image 타입으로 변경하거나
-             # processor.py에서 table -> image 처리를 안했다면 여기서 처리
-             # (현재 processor.py는 table도 크롭해서 image_path를 줌)
-             if item.get("image_path"):
-                 b_type = "image" # BlockNote엔 table 블록이 복잡하므로 일단 이미지로
-                 b_props["url"] = item["image_path"]
-                 b_props["name"] = "table.png"
-                 
-        # DB 모델 생성
-        db_block = ContentBlock(
-            id=block_id,
-            page_id=page_id,
-            type=b_type,
-            props=b_props,
-            content=content if content else [], # Pass list instead of JSON string
-            parent_id=None, # 1단계이므로 일단 루트 레벨
-            prev_block_id=prev_block_id,
-            next_block_id=None,
-            children_ids=[] # Pass list instead of JSON string
-        )
-        
-        db.add(db_block)
-        created_blocks.append(db_block)
-        
-        # 체이닝 업데이트 (이전 블록의 next를 현재로)
-        if prev_block_id:
-            # 이전 블록을 찾아서 업데이트 (Batch 처리 시엔 로직 다를 수 있음)
-            # 여기서는 루프 내에서 바로 처리하기 위해 session flush 활용 가능
-            # 하지만 간단히 ID만 기억했다가 나중에 한 번에 하거나...
-            # 일단은 DB에 바로 업데이트하지 않고 메모리 객체 연결
-            pass 
+        for item in blocks_data:
+            block_id = str(uuid.uuid4())
             
-        prev_block_id = block_id
+            # BlockNote 타입 매핑
+            # processor.py에서 이미 heading, paragraph, bulletListItem 등으로 변환됨
+            b_type = item["type"]
+            b_props = item.get("props", {})
             
-    # 전체 저장
-    # 연결 리스트(Linked List) 구조를 맞추려면, created_blocks를 순회하며 링크 연결 필요
-    for i in range(len(created_blocks)):
-        if i > 0:
-            created_blocks[i].prev_block_id = created_blocks[i-1].id
-        if i < len(created_blocks) - 1:
-            created_blocks[i].next_block_id = created_blocks[i+1].id
+            # 이미지의 경우 url을 props에 설정해야 함
+            content = [] # BlockNote content format is usually a list of inline objects
             
+            if b_type == "paragraph" or b_type == "heading" or b_type == "bulletListItem":
+                # 텍스트가 있을 경우
+                 if item.get("text"):
+                    content = [{"type": "text", "text": item["text"], "styles": {}}]
+            
+            elif b_type == "image":
+                # 이미지는 content가 아니라 props.url 사용
+                 if item.get("image_path"):
+                     b_props["url"] = item["image_path"]
+                     b_props["name"] = item.get("image_filename", "image.png")
+                     # 이미지에 캡션이 있다면 content로 넣을 수도 있음
+                     
+            elif b_type == "table":
+                 # 테이블도 이미지로 처리되었으면 image 타입으로 변경하거나
+                 # processor.py에서 table -> image 처리를 안했다면 여기서 처리
+                 # (현재 processor.py는 table도 크롭해서 image_path를 줌)
+                 if item.get("image_path"):
+                     b_type = "image" # BlockNote엔 table 블록이 복잡하므로 일단 이미지로
+                     b_props["url"] = item["image_path"]
+                     b_props["name"] = "table.png"
+                     
+            # DB 모델 생성
+            db_block = ContentBlock(
+                id=block_id,
+                page_id=page_id,
+                type=b_type,
+                props=b_props,
+                content=content if content else [], # Pass list instead of JSON string
+                parent_id=None, # 1단계이므로 일단 루트 레벨
+                prev_block_id=prev_block_id,
+                next_block_id=None,
+                children_ids=[] # Pass list instead of JSON string
+            )
+            
+            db.add(db_block)
+            created_blocks.append(db_block)
+            
+            # 체이닝 업데이트 (이전 블록의 next를 현재로)
+            if prev_block_id:
+                # 이전 블록을 찾아서 업데이트 (Batch 처리 시엔 로직 다를 수 있음)
+                # 여기서는 루프 내에서 바로 처리하기 위해 session flush 활용 가능
+                # 하지만 간단히 ID만 기억했다가 나중에 한 번에 하거나...
+                # 일단은 DB에 바로 업데이트하지 않고 메모리 객체 연결
+                pass 
+                
+            prev_block_id = block_id
+                
+        # 전체 저장
+        # 연결 리스트(Linked List) 구조를 맞추려면, created_blocks를 순회하며 링크 연결 필요
+        for i in range(len(created_blocks)):
+            if i > 0:
+                created_blocks[i].prev_block_id = created_blocks[i-1].id
+            if i < len(created_blocks) - 1:
+                created_blocks[i].next_block_id = created_blocks[i+1].id
+                
         # 다시 DB에 반영 (Add는 루프에서 했으므로 Commit만)
         db.commit()
         logger.info(f"✅ Saved {len(created_blocks)} blocks to DB.")
