@@ -55,19 +55,6 @@ async def process_pdf_upload(db: Session, workspace_id: int, user_id: int, file:
                  raise HTTPException(status_code=423, detail="PDF Backend is busy")
             raise HTTPException(status_code=e.response.status_code, detail="PDF analysis failed")
 
-async def check_pdf_status():
-    """
-    PDF Backend의 상태를 확인합니다.
-    """
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        try:
-            response = await client.get(f"{PDF_BACKEND_URL}/status")
-            if response.status_code == 200:
-                return response.json() # {"is_processing": bool}
-        except Exception as e:
-            print(f"Failed to check status: {e}")
-            return {"is_processing": False} # 에러 시 처리 중이 아니라고 가정하거나 에러 처리
-
     # 2. 페이지 생성
     try:
         logger.info("🔹 Starting Page creation...")
@@ -182,3 +169,16 @@ async def check_pdf_status():
         logger.error(f"❌ Error saving to DB: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to save PDF content: {str(e)}")
+
+async def check_pdf_status():
+    """
+    PDF Backend의 상태를 확인합니다.
+    """
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        try:
+            response = await client.get(f"{PDF_BACKEND_URL}/status")
+            if response.status_code == 200:
+                return response.json() # {"is_processing": bool}
+        except Exception as e:
+            print(f"Failed to check status: {e}")
+            return {"is_processing": False} # 에러 시 처리 중이 아니라고 가정하거나 에러 처리
