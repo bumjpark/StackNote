@@ -243,7 +243,7 @@ def update_workspace_name(
     return WorkspaceResponse(
         status="success",
         user=WorkspaceUserResponse(
-            work_space_id=ws.id,
+            id=ws.id,
             work_space_name=ws.work_space_name
         )
     )

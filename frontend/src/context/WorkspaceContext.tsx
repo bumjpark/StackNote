@@ -240,18 +240,8 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             // Refetch to get consistent ID and state
             // Or construct manually if response contains enough info
             const newWsData = response.data.user;
-            const newWorkspace: Workspace = {
-                id: String(newWsData.work_space_id),
-                name: newWsData.work_space_name,
-                type: type, // Use provided type
-                privatePages: [],
-                teamPages: [],
-                voiceChannels: [],
-                members: []
-            };
-
-            setWorkspaces([...workspaces, newWorkspace]);
-            setCurrentWorkspaceId(newWorkspace.id);
+            await refreshWorkspaces();
+            setCurrentWorkspaceId(String(newWsData.id));
             // new workspace has no pages yet
         } catch (error) {
             console.error("Failed to create workspace:", error);
