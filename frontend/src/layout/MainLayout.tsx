@@ -644,9 +644,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         )}
 
                         {/* RENDER PRIVATE PAGE TREE */}
-                        {renderPageTree(currentWorkspace.privatePages, 'private')}
+                        {currentWorkspace && renderPageTree(currentWorkspace.privatePages, 'private')}
 
-                        {currentWorkspace?.privatePages.map(page => (
+                        {/* {renderPageTree(currentWorkspace?.privatePages || [], 'private') && currentWorkspace?.privatePages.map(page => (
                             <div
                                 key={page.id}
                                 style={{
@@ -689,8 +689,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         ))}
                         {currentWorkspace?.privatePages.length === 0 && (
                             <div style={{ padding: '0 0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Empty</div>
-                        )}
-                      
+                        )} */}
+
                     </div>
 
                     {/* Team Spaces */}
@@ -722,9 +722,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         </div>
 
                         {/* RENDER TEAM PAGE TREE */}
-                        {renderPageTree(currentWorkspace.teamPages, 'team')}
+                        {currentWorkspace && renderPageTree(currentWorkspace.teamPages, 'team')}
 
-                        {currentWorkspace?.teamPages.map(page => (
+                        {/* {renderPageTree(currentWorkspace?.teamPages || [], 'team') && currentWorkspace?.teamPages.map(page => (
                             <div
                                 key={page.id}
                                 style={{
@@ -767,7 +767,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         ))}
                         {currentWorkspace?.teamPages.length === 0 && (
                             <div style={{ padding: '0 0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Empty</div>
-                        )}
+                        )} */}
                     </div>
 
                     {/* Voice Channels - Always Visible */}
