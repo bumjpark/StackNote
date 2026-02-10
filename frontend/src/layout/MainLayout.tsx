@@ -38,8 +38,13 @@ const VoiceChannelItem: React.FC<VoiceChannelItemProps> = ({ channel, isActive, 
         for (let i = 0; i < userId.length; i++) {
             hash = userId.charCodeAt(i) + ((hash << 5) - hash);
         }
-        const h = Math.abs(hash % 360);
-        return `hsl(${h}, 50%, 50%)`;
+
+        // Use sin to scramble the hash into distinct R, G, B components
+        const r = Math.floor(Math.abs(Math.sin(hash + 1) * 10000) % 256);
+        const g = Math.floor(Math.abs(Math.sin(hash + 2) * 10000) % 256);
+        const b = Math.floor(Math.abs(Math.sin(hash + 3) * 10000) % 256);
+
+        return `rgb(${r}, ${g}, ${b})`;
     };
 
     return (
@@ -82,7 +87,7 @@ const VoiceChannelItem: React.FC<VoiceChannelItemProps> = ({ channel, isActive, 
                                 transition: 'all 0.1s ease', // Faster transition for responsiveness
                                 position: 'relative'
                             }}>
-                                {p.username.substring(0, 1).toUpperCase()}
+                                {p.username ? p.username.substring(0, 1).toUpperCase() : '?'}
                             </div>
                             <span style={{
                                 fontSize: '0.8rem',
@@ -93,7 +98,7 @@ const VoiceChannelItem: React.FC<VoiceChannelItemProps> = ({ channel, isActive, 
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis'
                             }}>
-                                {p.username}
+                                {p.username || 'Unknown User'}
                             </span>
                         </div>
                     ))}

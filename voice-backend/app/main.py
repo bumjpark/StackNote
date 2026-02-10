@@ -54,21 +54,29 @@ class ConnectionManager:
             exclude_user=user_id
         )
 
-    def disconnect(self, room_id: str, user_id: str):
+    def disconnect(self, room_id: str, user_id: str, websocket: WebSocket):
         if room_id in self.rooms:
-            if user_id in self.rooms[room_id]:
+            # Check if the socket to be removed is actually the one currently registered
+            # This prevents race conditions where a new connection (re-join) is deleted by the old connection's cleanup
+            if user_id in self.rooms[room_id] and self.rooms[room_id][user_id] == websocket:
                 del self.rooms[room_id][user_id]
                 logger.info(f"User {user_id} disconnected from Room {room_id}")
             
-            # username도 삭제
-            if room_id in self.usernames and user_id in self.usernames[room_id]:
-                del self.usernames[room_id][user_id]
+                # username도 삭제 (if it matches the disconnected user context - simplified here to just check existence)
+                if room_id in self.usernames and user_id in self.usernames[room_id]:
+                    del self.usernames[room_id][user_id]
             
-            # 방이 비었으면 삭제
-            if not self.rooms[room_id]:
-                del self.rooms[room_id]
-            if room_id in self.usernames and not self.usernames[room_id]:
-                del self.usernames[room_id]
+                # 방이 비었으면 삭제
+                if not self.rooms[room_id]:
+                    del self.rooms[room_id]
+                if room_id in self.usernames and not self.usernames[room_id]:
+                    del self.usernames[room_id]
+                
+                # 퇴장 알림 (Only broadcast if we actually removed the user)
+                return True
+            else:
+                logger.info(f"Ignored disconnect for {user_id} in {room_id} (socket mismatch)")
+                return False
 
     async def broadcast_to_room(self, message: dict, room_id: str, exclude_user: str = None):
         """방에 있는 모든(또는 특정 유저 제외) 유저에게 메시지 전송"""
@@ -81,6 +89,8 @@ class ConnectionManager:
                         await connection.send_json(message)
                     except Exception as e:
                         logger.error(f"Failed to send to {user_id}: {e}")
+                        # Remove zombie connection
+                        self.disconnect(room_id, user_id, connection)
 
     async def send_personal_message(self, message: dict, room_id: str, target_user_id: str):
         """특정 유저에게 귓속말 (Signaling Data 전달용)"""
@@ -90,6 +100,8 @@ class ConnectionManager:
                 await connection.send_json(message)
             except Exception as e:
                 logger.error(f"Failed to send personal message to {target_user_id}: {e}")
+                # Remove zombie connection
+                self.disconnect(room_id, target_user_id, connection)
 
 manager = ConnectionManager()
 
@@ -141,15 +153,16 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
                 await manager.broadcast_to_room(data, room_id, exclude_user=user_id)
 
     except WebSocketDisconnect:
-        manager.disconnect(room_id, user_id)
-        # 퇴장 알림
-        await manager.broadcast_to_room(
-            {
-                "type": "user_left",
-                "user_id": user_id
-            },
-            room_id
-        )
+        removed = manager.disconnect(room_id, user_id, websocket)
+        if removed:
+            # 퇴장 알림
+            await manager.broadcast_to_room(
+                {
+                    "type": "user_left",
+                    "user_id": user_id
+                },
+                room_id
+            )
     except Exception as e:
         logger.error(f"Error: {e}")
-        manager.disconnect(room_id, user_id)
+        manager.disconnect(room_id, user_id, websocket)
