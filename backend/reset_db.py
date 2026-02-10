@@ -1,5 +1,7 @@
-from app.database import engine, Base
-from app.models import *
+from shared.database.core.database import engine, Base
+from shared.database.models.user import User
+from shared.database.models.workspace import WorkSpace, Page, VoiceChannel, WorkspaceMember
+from shared.database.models import workspace # Ensure all models are loaded
 
 def reset_db():
     print("Dropping all tables...")

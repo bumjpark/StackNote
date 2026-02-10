@@ -1,4 +1,7 @@
 from shared.database.core.database import engine, Base
+from shared.database.models.user import User
+from shared.database.models.workspace import WorkSpace, Page, VoiceChannel, WorkspaceMember, Chatroom, Message, Report, ContentBlock, VoiceChat
+
 
 def reset_db():
     print("Dropping all tables...")

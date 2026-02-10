@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Float, JSON
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy.sql import func
 from datetime import datetime
 import pytz
@@ -57,7 +57,15 @@ class Page(Base):
 
     page_name = Column(String(50), nullable=False)
     page_type = Column(String(20), nullable=True)
-    icon = Column(String(10), nullable=True, default="📄")  
+    icon = Column(String(10), nullable=True, default="📄")
+    
+    # Nested Pages Support
+    parent_page_id = Column(String(50), ForeignKey("page_list.id"), nullable=True)
+    
+    # Self-referential relationship
+    children = relationship("Page", 
+                          backref=backref("parent", remote_side=[id]),
+                          cascade="all, delete-orphan")
 
 
 class VoiceChannel(Base):

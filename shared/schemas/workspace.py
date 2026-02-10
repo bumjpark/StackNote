@@ -61,6 +61,7 @@ class PageListCreateRequest(BaseModel):
     user_id: int
     work_space_id: int
     page_type: str
+    parent_page_id: Optional[str] = None
     page_list: list[str]
 
 class PageListUserResponse(BaseModel):
