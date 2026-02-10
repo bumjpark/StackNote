@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import VoiceManager from '../features/VoiceChat/VoiceManager';
-import { useWorkspace } from '../context/WorkspaceContext';
+import { useWorkspace, type Page } from '../context/WorkspaceContext';
 import {
     ChevronDown,
     Plus,
@@ -15,7 +15,8 @@ import {
     Bell,
     X,
     FileUp,
-    Loader2
+    Loader2,
+    ChevronRight
 } from 'lucide-react';
 
 interface MainLayoutProps {
@@ -98,6 +99,148 @@ const getPageIcon = (page: any, defaultIcon: React.ReactNode) => {
     if (page.icon) return <span style={{ fontSize: '14px', marginRight: '4px' }}>{page.icon}</span>;
     return defaultIcon;
 };
+
+// Recursive Page Tree Item
+interface PageTreeItemProps {
+    page: Page;
+    depth: number;
+    getChildPages: (parentId: string) => Page[];
+    currentPageId: string;
+    onSelect: (id: string) => void;
+    onUpdateIcon: (id: string, icon: string) => void;
+    onDelete: (id: string) => void;
+    onCreateSubPage: (parentId: string) => void;
+}
+
+const PageTreeItem: React.FC<PageTreeItemProps> = ({
+    page,
+    depth,
+    getChildPages,
+    currentPageId,
+    onSelect,
+    onUpdateIcon,
+    onDelete,
+    onCreateSubPage
+}) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+    const childPages = getChildPages(page.id);
+    const hasChildren = childPages.length > 0;
+    const isSelected = page.id === currentPageId;
+
+    // Expand if current page is inside this tree (simplification: expand if selected)
+    // In a real app, we might want to check if any descendant is selected.
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div
+                style={{
+                    padding: `0.4rem 0.75rem 0.4rem ${0.75 + depth * 0.8}rem`,
+                    fontSize: '0.9rem',
+                    display: 'flex', alignItems: 'center', gap: '0.25rem',
+                    background: isSelected ? 'rgba(255,255,255,0.05)' : 'transparent',
+                    color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    position: 'relative',
+                    cursor: 'pointer'
+                }}
+                className="hover:bg-white/5 group"
+                onClick={() => onSelect(page.id)}
+            >
+                {/* Expand Toggle */}
+                <div
+                    style={{
+                        width: '16px', height: '16px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        borderRadius: '3px',
+                        cursor: 'pointer',
+                        opacity: hasChildren ? 1 : 0
+                    }}
+                    className="hover:bg-white/10"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setIsExpanded(!isExpanded);
+                    }}
+                >
+                    {hasChildren && (
+                        isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />
+                    )}
+                </div>
+
+                {/* Icon */}
+                <div
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        const newIcon = prompt("Enter an emoji for this page:", page.icon || "📄");
+                        if (newIcon) onUpdateIcon(page.id, newIcon);
+                    }}
+                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                    title="Click to change icon"
+                >
+                    {getPageIcon(page, page.type === 'private' ? <Lock size={14} /> : <Users size={14} />)}
+                </div>
+
+                {/* Title */}
+                <span
+                    style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1 }}
+                >{page.title || 'Untitled'}</span>
+
+                {/* Actions (hover only) */}
+                <div
+                    className="hidden group-hover:flex"
+                    style={{
+                        opacity: 0.6,
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: '4px'
+                    }}
+                >
+                    <div title="Add sub-page" className="cursor-pointer hover:text-white hover:opacity-100" style={{ display: 'flex' }}>
+                        <Plus
+                            size={14}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onCreateSubPage(page.id);
+                                setIsExpanded(true); // Auto expand when creating child
+                            }}
+                        />
+                    </div>
+                    <div title="Delete page" className="cursor-pointer hover:text-red-400 hover:opacity-100" style={{ display: 'flex' }}>
+                        <Trash2
+                            size={14}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm(`Delete "${page.title || 'Untitled'}"?`)) {
+                                    onDelete(page.id);
+                                }
+                            }}
+                            style={{ opacity: 0.5 }}
+                        />
+                    </div>
+                </div>
+            </div>
+
+            {/* Children */}
+            {isExpanded && hasChildren && (
+                <div>
+                    {childPages.map(child => (
+                        <PageTreeItem
+                            key={child.id}
+                            page={child}
+                            depth={depth + 1}
+                            getChildPages={getChildPages}
+                            currentPageId={currentPageId}
+                            onSelect={onSelect}
+                            onUpdateIcon={onUpdateIcon}
+                            onDelete={onDelete}
+                            onCreateSubPage={onCreateSubPage}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const navigate = useNavigate();
@@ -206,6 +349,47 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             setShowWorkspaceMenu(false);
         }
     };
+
+    // Helper functions for Tree Structure
+    const getChildPages = (allPages: Page[], parentId: string | null = null) => {
+        return allPages.filter(p => {
+            // If parentId is null, we want root pages (parent_page_id is null or undefined)
+            if (parentId === null) {
+                return !p.parent_page_id;
+            }
+            return p.parent_page_id === parentId;
+        });
+    };
+
+    // Memoize the getChildPages for private and team pages to avoid recalculation on every render
+    // Actually, simple filtering is cheap enough for now.
+
+    const renderPageTree = (pages: Page[], type: 'private' | 'team') => {
+        const rootPages = getChildPages(pages, null);
+
+        if (rootPages.length === 0) {
+            return <div style={{ padding: '0 0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Empty</div>;
+        }
+
+        return rootPages.map(page => (
+            <PageTreeItem
+                key={page.id}
+                page={page}
+                depth={0}
+                getChildPages={(parentId) => getChildPages(pages, parentId)}
+                currentPageId={currentPage?.id || ''}
+                onSelect={selectPage}
+                onUpdateIcon={updatePageIcon}
+                onDelete={deletePage}
+                onCreateSubPage={(parentId) => {
+                    if (currentWorkspace) {
+                        createPage(currentWorkspace.id, 'Untitled Page', type, parentId);
+                    }
+                }}
+            />
+        ));
+    }
+
 
     return (
         <div className="flex h-screen w-full overflow-hidden bg-bg-primary text-text-primary" style={{ display: 'flex', height: '100vh', width: '100%', overflow: 'hidden', position: 'relative' }}>
@@ -424,50 +608,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                 </span>
                             </div>
                         )}
-                        {currentWorkspace?.privatePages.map(page => (
-                            <div
-                                key={page.id}
-                                style={{
-                                    padding: '0.4rem 0.75rem',
-                                    fontSize: '0.9rem',
-                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                                    background: page.id === currentPage?.id ? 'rgba(255,255,255,0.05)' : 'transparent',
-                                    color: page.id === currentPage?.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-                                    position: 'relative'
-                                }}
-                                className="hover:bg-white/5 group"
-                            >
-                                <div
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        const newIcon = prompt("Enter an emoji for this page:", page.icon || "📄");
-                                        if (newIcon) updatePageIcon(page.id, newIcon);
-                                    }}
-                                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                                    title="Click to change icon"
-                                >
-                                    {getPageIcon(page, <Lock size={14} />)}
-                                </div>
-                                <span
-                                    onClick={() => selectPage(page.id)}
-                                    style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1, cursor: 'pointer' }}
-                                >{page.title || 'Untitled'}</span>
-                                <Trash2
-                                    size={14}
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (confirm(`Delete "${page.title || 'Untitled'}"?`)) {
-                                            deletePage(page.id);
-                                        }
-                                    }}
-                                    style={{ cursor: 'pointer', opacity: 0.5 }}
-                                    className="hover:opacity-100 hover:text-red-400"
-                                />
-                            </div>
-                        ))}
-                        {currentWorkspace?.privatePages.length === 0 && (
-                            <div style={{ padding: '0 0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Empty</div>
-                        )}
+
+                        {/* RENDER PRIVATE PAGE TREE */}
+                        {currentWorkspace && renderPageTree(currentWorkspace.privatePages, 'private')}
+
                     </div>
 
                     {/* Team Spaces */}
@@ -497,50 +641,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                 </div>
                             </div>
                         </div>
-                        {currentWorkspace?.teamPages.map(page => (
-                            <div
-                                key={page.id}
-                                style={{
-                                    padding: '0.4rem 0.75rem',
-                                    fontSize: '0.9rem',
-                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                                    background: page.id === currentPage?.id ? 'rgba(255,255,255,0.05)' : 'transparent',
-                                    color: page.id === currentPage?.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-                                    position: 'relative'
-                                }}
-                                className="hover:bg-white/5 group"
-                            >
-                                <div
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        const newIcon = prompt("Enter an emoji for this page:", page.icon || "📄");
-                                        if (newIcon) updatePageIcon(page.id, newIcon);
-                                    }}
-                                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                                    title="Click to change icon"
-                                >
-                                    {getPageIcon(page, <Users size={14} />)}
-                                </div>
-                                <span
-                                    onClick={() => selectPage(page.id)}
-                                    style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1, cursor: 'pointer' }}
-                                >{page.title || 'Untitled'}</span>
-                                <Trash2
-                                    size={14}
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (confirm(`Delete "${page.title || 'Untitled'}"?`)) {
-                                            deletePage(page.id);
-                                        }
-                                    }}
-                                    style={{ cursor: 'pointer', opacity: 0.5 }}
-                                    className="hover:opacity-100 hover:text-red-400"
-                                />
-                            </div>
-                        ))}
-                        {currentWorkspace?.teamPages.length === 0 && (
-                            <div style={{ padding: '0 0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Empty</div>
-                        )}
+
+                        {/* RENDER TEAM PAGE TREE */}
+                        {currentWorkspace && renderPageTree(currentWorkspace.teamPages, 'team')}
+
                     </div>
 
                     {/* Voice Channels (Visible in Team Workspace OR when viewing a Team Page) */}

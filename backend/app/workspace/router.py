@@ -154,23 +154,7 @@ def create_page_list(
     request: PageListCreateRequest,
     db: Session = Depends(get_db)
 ):
-    created_page_ids = []
-    
-    # 요청받은 페이지 이름 리스트를 순회하며 각각 Page 생성
-    for page_name in request.page_list:
-        page = Page(
-            workspace_id=request.work_space_id,
-            user_id=request.user_id,
-            page_name=page_name,
-            page_type=request.page_type,
-            is_deleted=False
-        )
-        db.add(page)
-        db.flush() # ID 발급을 위해 flush
-        db.refresh(page)
-        created_page_ids.append(page.id)
-
-    db.commit()
+    created_page_ids = service.create_page_list(db, request)
 
     return PageListCreateResponse(
         status="success",

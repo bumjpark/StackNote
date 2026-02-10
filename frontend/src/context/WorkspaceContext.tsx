@@ -8,6 +8,7 @@ export interface Page {
     content: string;
     type: 'private' | 'team';
     icon?: string;
+    parent_page_id?: string | null;
 }
 
 export interface VoiceChannel {
@@ -45,7 +46,7 @@ interface WorkspaceContextType {
     currentPage: Page | null;
     currentChannel: VoiceChannel | null;
     createWorkspace: (name: string, type: 'private' | 'team') => void;
-    createPage: (workspaceId: string, title: string, type: 'private' | 'team') => void;
+    createPage: (workspaceId: string, title: string, type: 'private' | 'team', parentId?: string) => void;
     createChannel: (workspaceId: string, name: string) => void;
     inviteMember: (workspaceId: string, email: string) => Promise<void>;
     selectWorkspace: (workspaceId: string) => void;
@@ -258,7 +259,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
         }
     };
 
-    const createPage = async (workspaceId: string, title: string, type: 'private' | 'team') => {
+    const createPage = async (workspaceId: string, title: string, type: 'private' | 'team', parentId?: string) => {
         try {
             const userId = localStorage.getItem('user_id');
             if (!userId) return;
@@ -266,8 +267,10 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             const response = await api.post('/workspace/page_list', {
                 user_id: parseInt(userId),
                 work_space_id: parseInt(workspaceId),
+                // page_type: type, // Removed duplicate
                 page_type: type,
-                page_list: [title]
+                page_list: [title],
+                parent_page_id: parentId
             });
 
             // Response format: { status: "success", user: { work_space_id: 1, page_list_id: [123] } }
@@ -275,7 +278,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
 
             setWorkspaces(prev => prev.map(w => {
                 if (w.id === workspaceId) {
-                    const newPage: Page = { id: newPageId, title, content: '', type };
+                    const newPage: Page = { id: newPageId, title, content: '', type, parent_page_id: parentId };
                     setCurrentPageId(newPageId);
                     if (type === 'private') {
                         return { ...w, privatePages: [...w.privatePages, newPage] };

@@ -88,7 +88,10 @@ def get_workspaces_by_user(db: Session, user_id: int):
                 "title": p.page_name,
                 "icon": p.icon,
                 "content": "", # 목록 조회시엔 컨텐츠 제외 (가벼운 응답)
-                "type": final_type
+                "icon": p.icon,
+                "content": "", # 목록 조회시엔 컨텐츠 제외 (가벼운 응답)
+                "type": final_type,
+                "parent_page_id": p.parent_page_id
             }
             
             if final_type == "private":
@@ -262,6 +265,7 @@ def create_page_list(
             workspace_id=page_list_data.work_space_id,
             user_id=page_list_data.user_id,
             page_name=page_name,
+            parent_page_id=page_list_data.parent_page_id,
             is_deleted=False
         )
         db.add(page)
