@@ -33,6 +33,21 @@ const VoiceChannelItem: React.FC<VoiceChannelItemProps> = ({ channel, isActive, 
     const { voiceParticipants } = useWorkspace();
     const participants = voiceParticipants[channel.id] || [];
 
+    // Helper to get consistent color from userId
+    const getUserColor = (userId: string) => {
+        let hash = 0;
+        for (let i = 0; i < userId.length; i++) {
+            hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+        }
+
+        // Use sin to scramble the hash into distinct R, G, B components
+        const r = Math.floor(Math.abs(Math.sin(hash + 1) * 10000) % 256);
+        const g = Math.floor(Math.abs(Math.sin(hash + 2) * 10000) % 256);
+        const b = Math.floor(Math.abs(Math.sin(hash + 3) * 10000) % 256);
+
+        return `rgb(${r}, ${g}, ${b})`;
+    };
+
     return (
         <div style={{ marginBottom: '4px' }}>
             {/* Channel Name */}
@@ -65,7 +80,7 @@ const VoiceChannelItem: React.FC<VoiceChannelItemProps> = ({ channel, isActive, 
                         <div key={p.userId} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <div style={{
                                 width: '22px', height: '22px', borderRadius: '50%',
-                                background: 'rgba(255,255,255,0.1)', // Keep background constant
+                                background: getUserColor(p.userId), // Use unique color per user
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 fontSize: '9px', color: 'white', fontWeight: 'bold',
                                 border: p.isSpeaking ? '2.5px solid #23a55a' : '2.5px solid transparent',
@@ -73,7 +88,7 @@ const VoiceChannelItem: React.FC<VoiceChannelItemProps> = ({ channel, isActive, 
                                 transition: 'all 0.1s ease', // Faster transition for responsiveness
                                 position: 'relative'
                             }}>
-                                {p.username.substring(0, 1).toUpperCase()}
+                                {p.username ? p.username.substring(0, 1).toUpperCase() : '?'}
                             </div>
                             <span style={{
                                 fontSize: '0.8rem',
@@ -84,7 +99,7 @@ const VoiceChannelItem: React.FC<VoiceChannelItemProps> = ({ channel, isActive, 
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis'
                             }}>
-                                {p.username}
+                                {p.username || 'Unknown User'}
                             </span>
                         </div>
                     ))}
@@ -270,6 +285,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const [showNotifications, setShowNotifications] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [uploadingFileName, setUploadingFileName] = useState("");
+    const [isVoiceViewActive, setIsVoiceViewActive] = useState(false);
 
     // File Upload Ref
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -390,6 +406,24 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         ));
     }
 
+    // Switch view when channel selected
+    const handleChannelSelect = (channelId: string) => {
+        selectChannel(channelId);
+        setIsVoiceViewActive(true);
+    };
+
+    // Switch view when page selected
+    const handlePageSelect = (pageId: string) => {
+        selectPage(pageId);
+        setIsVoiceViewActive(false);
+    };
+
+    // Reset view if disconnected
+    useEffect(() => {
+        if (!currentChannel) {
+            setIsVoiceViewActive(false);
+        }
+    }, [currentChannel]);
 
     return (
         <div className="flex h-screen w-full overflow-hidden bg-bg-primary text-text-primary" style={{ display: 'flex', height: '100vh', width: '100%', overflow: 'hidden', position: 'relative' }}>
@@ -610,8 +644,53 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         )}
 
                         {/* RENDER PRIVATE PAGE TREE */}
-                        {currentWorkspace && renderPageTree(currentWorkspace.privatePages, 'private')}
+                        {renderPageTree(currentWorkspace.privatePages, 'private')}
 
+                        {currentWorkspace?.privatePages.map(page => (
+                            <div
+                                key={page.id}
+                                style={{
+                                    padding: '0.4rem 0.75rem',
+                                    fontSize: '0.9rem',
+                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                    background: page.id === currentPage?.id ? 'rgba(255,255,255,0.05)' : 'transparent',
+                                    color: page.id === currentPage?.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                    position: 'relative'
+                                }}
+                                className="hover:bg-white/5 group"
+                            >
+                                <div
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        const newIcon = prompt("Enter an emoji for this page:", page.icon || "📄");
+                                        if (newIcon) updatePageIcon(page.id, newIcon);
+                                    }}
+                                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                                    title="Click to change icon"
+                                >
+                                    {getPageIcon(page, <Lock size={14} />)}
+                                </div>
+                                <span
+                                    onClick={() => handlePageSelect(page.id)}
+                                    style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1, cursor: 'pointer' }}
+                                >{page.title || 'Untitled'}</span>
+                                <Trash2
+                                    size={14}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (confirm(`Delete "${page.title || 'Untitled'}"?`)) {
+                                            deletePage(page.id);
+                                        }
+                                    }}
+                                    style={{ cursor: 'pointer', opacity: 0.5 }}
+                                    className="hover:opacity-100 hover:text-red-400"
+                                />
+                            </div>
+                        ))}
+                        {currentWorkspace?.privatePages.length === 0 && (
+                            <div style={{ padding: '0 0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Empty</div>
+                        )}
+                      
                     </div>
 
                     {/* Team Spaces */}
@@ -643,12 +722,56 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         </div>
 
                         {/* RENDER TEAM PAGE TREE */}
-                        {currentWorkspace && renderPageTree(currentWorkspace.teamPages, 'team')}
+                        {renderPageTree(currentWorkspace.teamPages, 'team')}
 
+                        {currentWorkspace?.teamPages.map(page => (
+                            <div
+                                key={page.id}
+                                style={{
+                                    padding: '0.4rem 0.75rem',
+                                    fontSize: '0.9rem',
+                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                    background: page.id === currentPage?.id ? 'rgba(255,255,255,0.05)' : 'transparent',
+                                    color: page.id === currentPage?.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                    position: 'relative'
+                                }}
+                                className="hover:bg-white/5 group"
+                            >
+                                <div
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        const newIcon = prompt("Enter an emoji for this page:", page.icon || "📄");
+                                        if (newIcon) updatePageIcon(page.id, newIcon);
+                                    }}
+                                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                                    title="Click to change icon"
+                                >
+                                    {getPageIcon(page, <Users size={14} />)}
+                                </div>
+                                <span
+                                    onClick={() => handlePageSelect(page.id)}
+                                    style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1, cursor: 'pointer' }}
+                                >{page.title || 'Untitled'}</span>
+                                <Trash2
+                                    size={14}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (confirm(`Delete "${page.title || 'Untitled'}"?`)) {
+                                            deletePage(page.id);
+                                        }
+                                    }}
+                                    style={{ cursor: 'pointer', opacity: 0.5 }}
+                                    className="hover:opacity-100 hover:text-red-400"
+                                />
+                            </div>
+                        ))}
+                        {currentWorkspace?.teamPages.length === 0 && (
+                            <div style={{ padding: '0 0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Empty</div>
+                        )}
                     </div>
 
-                    {/* Voice Channels (Visible in Team Workspace OR when viewing a Team Page) */}
-                    {(currentWorkspace?.type === 'team' || currentPage?.type === 'team' || currentWorkspace?.voiceChannels.some(vc => vc.id === currentChannel?.id)) && (
+                    {/* Voice Channels - Always Visible */}
+                    {currentWorkspace?.voiceChannels && currentWorkspace.voiceChannels.length > 0 && (
                         <div style={{ marginBottom: '1.5rem' }}>
                             <div style={{ padding: '0 0.75rem 0.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-secondary)' }}>
                                 <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>VOICE CHANNELS</span>
@@ -662,7 +785,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                     key={channel.id}
                                     channel={channel}
                                     isActive={channel.id === currentChannel?.id}
-                                    onSelect={() => selectChannel(channel.id)}
+                                    onSelect={() => handleChannelSelect(channel.id)}
                                 />
                             ))}
                         </div>
@@ -729,20 +852,27 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                 position: 'relative',
                 background: 'var(--bg-primary)'
             }}>
-                {currentChannel ? (
-                    <div style={{ flex: 1, height: '100%', overflow: 'hidden' }}>
-                        <VoiceManager />
-                    </div>
-                ) : (
+                {/* Voice Manager - Hidden but active when in page view */}
+                {currentChannel && (
                     <div style={{
                         flex: 1,
                         height: '100%',
-                        overflowY: 'auto',
-                        position: 'relative'
+                        display: isVoiceViewActive ? 'block' : 'none'
                     }}>
-                        {children}
+                        <VoiceManager />
                     </div>
                 )}
+
+                {/* Page Content - Visible when voice view is NOT active */}
+                <div style={{
+                    flex: 1,
+                    height: '100%',
+                    overflowY: 'auto',
+                    position: 'relative',
+                    display: (!currentChannel || !isVoiceViewActive) ? 'block' : 'none'
+                }}>
+                    {children}
+                </div>
             </main>
         </div>
     );

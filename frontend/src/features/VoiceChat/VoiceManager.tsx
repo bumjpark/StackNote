@@ -12,6 +12,7 @@ interface PeerInfo {
     username: string;
     isSpeaking: boolean;
     isMuted: boolean;
+    connectionStatus?: string;
 }
 
 interface ChatMessage {
@@ -41,7 +42,6 @@ const VoiceManager: React.FC = () => {
         getVoiceHistory,
         saveVoiceChat,
         deleteVoiceChat,
-        updateSpeakingStatus,
         setChannelParticipants
     } = useWorkspace();
     const [isConnected, setIsConnected] = useState(false);
@@ -71,14 +71,27 @@ const VoiceManager: React.FC = () => {
     const remoteAudioElements = useRef<Record<string, HTMLAudioElement>>({}); // userId -> audio element for playback
     const animationRef = useRef<number | null>(null);
 
-    const myUserId = useRef<string>(sessionStorage.getItem('user_id') || `user-${Math.floor(Math.random() * 1000)}`).current;
-    // Create a unique session ID for this specific tab/connection to allow same-user testing
-    const mySessionId = useRef<string>(`${myUserId}-${Math.random().toString(36).substr(2, 5)}`).current;
+    const myUserId = useRef<string>(localStorage.getItem('user_id') || `user-${Math.floor(Math.random() * 1000)}`).current;
 
     // Attempt to get email, fallback to ID based name
     const myUsername = useRef<string>(
-        sessionStorage.getItem('user_email') || `User ${myUserId.substring(0, 4)}`
+        localStorage.getItem('user_email')?.split('@')[0] || `User ${myUserId.substring(0, 4)}`
     ).current;
+
+    // Helper to get consistent color from userId
+    const getUserColor = (userId: string) => {
+        let hash = 0;
+        for (let i = 0; i < userId.length; i++) {
+            hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+        }
+
+        // Use sin to scramble the hash into distinct R, G, B components
+        const r = Math.floor(Math.abs(Math.sin(hash + 1) * 10000) % 256);
+        const g = Math.floor(Math.abs(Math.sin(hash + 2) * 10000) % 256);
+        const b = Math.floor(Math.abs(Math.sin(hash + 3) * 10000) % 256);
+
+        return `rgb(${r}, ${g}, ${b})`;
+    };
 
     const handleSendChat = async (content: string = chatInput) => {
         const text = content.trim();
@@ -117,17 +130,31 @@ const VoiceManager: React.FC = () => {
         if (!currentChannel) return;
         const roomId = currentChannel.id;
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/${roomId}/${mySessionId}`;
+        const wsUrl = `${protocol}//${window.location.host}/ws/${roomId}/${myUserId}`;
 
         console.log(`Connecting to Voice Server: ${wsUrl}`);
         ws.current = new WebSocket(wsUrl);
 
-        ws.current.onopen = async () => {
-            console.log("WebSocket Connected");
+        ws.current.onopen = () => {
+            console.log("Connected to Voice Server");
             setIsConnected(true);
+            // Join signal
+            if (currentChannel) {
+                // Initial identity
+                ws.current?.send(JSON.stringify({
+                    type: 'identify',
+                    username: myUsername,
+                    id: myUserId
+                }));
+            }
+        };
 
-            // Initial identify
-            sendSignal({ type: 'identify', username: myUsername });
+        ws.current.onclose = (event) => {
+            console.log(`[VoiceManager] WebSocket Disconnected: Code=${event.code}, Reason=${event.reason}`);
+            setIsConnected(false);
+            if (currentChannel) {
+                setChannelParticipants(currentChannel.id, []);
+            }
         };
 
         ws.current.onmessage = async (event) => {
@@ -135,18 +162,13 @@ const VoiceManager: React.FC = () => {
             console.log('Received WebSocket message:', data.type, 'from:', data.sender_user_id || data.user_id);
             handleSignalMessage(data);
         };
-
-        ws.current.onclose = () => {
-            console.log("WebSocket Disconnected");
-            setIsConnected(false);
-            if (currentChannel) {
-                setChannelParticipants(currentChannel.id, []);
-            }
-        };
     };
+
 
     useEffect(() => {
         if (!ENABLE_VOICE || !currentChannel) return;
+
+        let isMounted = true;
 
         const initVoiceChat = async () => {
             // 1. Initialize Audio Context
@@ -162,6 +184,13 @@ const VoiceManager: React.FC = () => {
             // 2. Get Local Stream
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+
+                if (!isMounted) {
+                    // Clean up stream if unmounted during await
+                    stream.getTracks().forEach(t => t.stop());
+                    return;
+                }
+
                 localStream.current = stream;
                 console.log('Local microphone stream acquired');
 
@@ -173,29 +202,39 @@ const VoiceManager: React.FC = () => {
 
                 // 4. Load Chat History
                 console.log('Fetching chat history for channel:', currentChannel.id);
-                const history = await getVoiceHistory(currentChannel.id);
-                console.log(`Loaded ${history.length} history messages`);
+                try {
+                    const history = await getVoiceHistory(currentChannel.id);
+                    if (!isMounted) return;
 
-                const mappedHistory = history.map((h: any) => {
-                    // Safe date parsing for Safari (MySQL space format -> ISO T format)
-                    const dateStr = h.created_at ? String(h.created_at).replace(' ', 'T') : null;
-                    const timestamp = dateStr ? new Date(dateStr).getTime() : Date.now();
+                    console.log(`Loaded ${history.length} history messages`);
 
-                    return {
-                        id: h.id,
-                        senderId: String(h.user_id),
-                        senderName: h.sender_name || `User ${String(h.user_id).substring(0, 4)}`,
-                        content: h.chat_content,
-                        timestamp: isNaN(timestamp) ? Date.now() : timestamp
-                    };
-                });
-                setChatMessages(mappedHistory);
+                    const mappedHistory = history.map((h: any) => {
+                        // Safe date parsing for Safari (MySQL space format -> ISO T format)
+                        const dateStr = h.created_at ? String(h.created_at).replace(' ', 'T') : null;
+                        const timestamp = dateStr ? new Date(dateStr).getTime() : Date.now();
+
+                        return {
+                            id: h.id,
+                            senderId: String(h.user_id),
+                            senderName: h.sender_name || `User ${String(h.user_id).substring(0, 4)}`,
+                            content: h.chat_content,
+                            timestamp: isNaN(timestamp) ? Date.now() : timestamp
+                        };
+                    });
+                    setChatMessages(mappedHistory);
+                } catch (hErr) {
+                    console.error("Failed to fetch history", hErr);
+                }
 
             } catch (err) {
-                console.error("Failed to get local stream", err);
-                // Do not alert, just log. Alert might cause focus issues.
+                if (isMounted) {
+                    console.error("Failed to get local stream", err);
+                }
             }
         };
+
+        // Cleanup previous state just in case
+        cleanup();
 
         initVoiceChat();
 
@@ -225,6 +264,7 @@ const VoiceManager: React.FC = () => {
         animationRef.current = requestAnimationFrame(checkVolume);
 
         return () => {
+            isMounted = false;
             cleanup();
         };
     }, [currentChannel]);
@@ -233,16 +273,41 @@ const VoiceManager: React.FC = () => {
     useEffect(() => {
         if (!currentChannel) return;
 
-        const participants: VoiceParticipant[] = [
+        const rawParticipants: VoiceParticipant[] = [
             { userId: myUserId, username: myUsername, isSpeaking: isSpeaking },
-            ...Object.entries(peersInfo).map(([uid, info]) => ({
-                userId: uid,
-                username: info.username,
-                isSpeaking: info.isSpeaking
-            }))
+            ...Object.entries(peersInfo)
+                .filter(([uid, info]) => {
+                    if (uid === myUserId) return false;
+                    // Filter out ghosts with broken connections
+                    if (info.connectionStatus === 'disconnected' ||
+                        info.connectionStatus === 'failed' ||
+                        info.connectionStatus === 'closed') {
+                        return false;
+                    }
+                    return true;
+                })
+                .map(([uid, info]) => ({
+                    userId: uid,
+                    username: info.username,
+                    isSpeaking: info.isSpeaking
+                }))
         ];
 
-        setChannelParticipants(currentChannel.id, participants);
+        // Deduplicate by username to prevent double display (e.g. ghost sessions)
+        // If multiple users have the same name, we merge their speaking status
+        const uniqueParticipants = rawParticipants.reduce((acc, current) => {
+            const existingIndex = acc.findIndex(p => p.username === current.username);
+            if (existingIndex >= 0) {
+                // Merge speaking status
+                acc[existingIndex].isSpeaking = acc[existingIndex].isSpeaking || current.isSpeaking;
+                // Keep the existing one (usually 'me' or the first encountered)
+            } else {
+                acc.push(current);
+            }
+            return acc;
+        }, [] as VoiceParticipant[]);
+
+        setChannelParticipants(currentChannel.id, uniqueParticipants);
     }, [isSpeaking, peersInfo, currentChannel, myUserId, myUsername, setChannelParticipants]);
 
     // 채팅 자동 스크롤
@@ -311,13 +376,41 @@ const VoiceManager: React.FC = () => {
 
         if (connectToSpeakers) {
             // Use native Audio element for reliable playback
+            // Use native Audio element for reliable playback
             if (!remoteAudioElements.current[id]) {
                 console.log(`Creating new Audio element for ${id}`);
                 const audio = new Audio();
+                audio.autoplay = true; // Enable autoplay
                 audio.srcObject = stream;
                 audio.volume = 1.0;
                 audio.muted = isDeafened; // Apply current deafen state
-                audio.play().catch(e => console.error("Audio playback failed:", e));
+
+                const tryPlay = async () => {
+                    try {
+                        await audio.play();
+                        console.log(`Audio playback started for ${id}`);
+                    } catch (err) {
+                        console.warn(`Autoplay prevented for ${id}, waiting for interaction`, err);
+                    }
+                };
+
+                // Attempt play
+                tryPlay();
+
+                // Also resume AudioContext if suspended (often happens on re-entry without click)
+                if (audioContext.current?.state === 'suspended') {
+                    const resumeContext = () => {
+                        audioContext.current?.resume().then(() => {
+                            console.log("AudioContext resumed by user interaction");
+                            tryPlay(); // Retry play
+                        });
+                        document.removeEventListener('click', resumeContext);
+                        document.removeEventListener('keydown', resumeContext);
+                    };
+                    document.addEventListener('click', resumeContext);
+                    document.addEventListener('keydown', resumeContext);
+                }
+
                 remoteAudioElements.current[id] = audio;
             } else {
                 // Update existing if stream changed
@@ -339,17 +432,31 @@ const VoiceManager: React.FC = () => {
     }
 
     const cleanup = () => {
-        if (ws.current) ws.current.close();
-        if (localStream.current) localStream.current.getTracks().forEach(track => track.stop());
-        if (animationRef.current) cancelAnimationFrame(animationRef.current);
-        if (audioContext.current) audioContext.current.close();
+        if (ws.current) {
+            ws.current.close();
+            ws.current = null;
+        }
+        if (localStream.current) {
+            localStream.current.getTracks().forEach(track => track.stop());
+            localStream.current = null;
+        }
+        if (animationRef.current) {
+            cancelAnimationFrame(animationRef.current);
+            animationRef.current = null;
+        }
+        if (audioContext.current) {
+            audioContext.current.close().catch(console.error);
+            audioContext.current = null;
+        }
 
         Object.values(peers.current).forEach(peer => peer.close());
         Object.values(remoteAudioElements.current).forEach(audio => {
             audio.pause();
             audio.srcObject = null;
+            audio.remove(); // Reduce DOM clutter if appended
         });
         peers.current = {};
+        pendingCandidates.current = {};
         remoteAudioElements.current = {};
         analysers.current = {};
         gainNodes.current = {};
@@ -359,7 +466,11 @@ const VoiceManager: React.FC = () => {
 
     const sendSignal = (data: any) => {
         if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            ws.current.send(JSON.stringify(data));
+            try {
+                ws.current.send(JSON.stringify(data));
+            } catch (err) {
+                console.warn("[VoiceManager] Failed to send signal:", err);
+            }
         }
     };
 
@@ -381,12 +492,14 @@ const VoiceManager: React.FC = () => {
                 setChatMessages(prev => prev.filter(m => m.id !== data.id));
                 break;
             case 'identify':
+                if (String(data.sender_user_id) === String(myUserId)) return;
                 setPeersInfo(prev => ({
                     ...prev,
                     [data.sender_user_id]: {
                         username: data.username,
                         isSpeaking: false,
-                        isMuted: false
+                        isMuted: false,
+                        connectionStatus: 'connected'
                     }
                 }));
                 // Handshake: If this was a request for identity exchange, reply back
@@ -402,6 +515,7 @@ const VoiceManager: React.FC = () => {
                 break;
 
             case 'user_joined':
+                if (String(data.user_id) === String(myUserId)) return;
                 console.log(`User joined: ${data.user_id}`);
                 sendSignal({
                     type: 'identify',
@@ -454,7 +568,11 @@ const VoiceManager: React.FC = () => {
     };
 
     const createPeerConnection = async (targetUserId: string, isInitiator: boolean) => {
-        if (peers.current[targetUserId]) return;
+        if (peers.current[targetUserId]) {
+            console.warn(`[VoiceManager] Closing existing peer for ${targetUserId} before new connection`);
+            peers.current[targetUserId].close();
+            delete peers.current[targetUserId];
+        }
 
         const peer = new RTCPeerConnection({
             iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -465,26 +583,48 @@ const VoiceManager: React.FC = () => {
             localStream.current.getTracks().forEach(track => peer.addTrack(track, localStream.current!));
         }
 
+        peer.oniceconnectionstatechange = () => {
+            console.log(`[ICE Status] ${targetUserId}: ${peer.iceConnectionState}`);
+            setPeersInfo(prev => ({
+                ...prev,
+                [targetUserId]: {
+                    ...prev[targetUserId],
+                    connectionStatus: peer.iceConnectionState
+                }
+            }));
+        };
+        peer.onicegatheringstatechange = () => {
+            console.log(`[ICE Gathering] ${targetUserId}: ${peer.iceGatheringState}`);
+        };
+        peer.onsignalingstatechange = () => {
+            console.log(`[Signaling Status] ${targetUserId}: ${peer.signalingState}`);
+        };
+
         peer.onicecandidate = (event) => {
-            if (event.candidate) sendSignal({ type: 'ice-candidate', candidate: event.candidate, target_user_id: targetUserId });
+            if (event.candidate) {
+                // console.log(`[ICE Candidate] Generated for ${targetUserId}`);
+                sendSignal({ type: 'ice-candidate', candidate: event.candidate, target_user_id: targetUserId });
+            }
         };
 
         peer.ontrack = (event) => {
-            console.log(`Received remote track from ${targetUserId}`, event.streams[0]);
+            console.log(`[Track] Received remote track from ${targetUserId}`, event.streams[0]);
             try {
                 if (event.streams && event.streams[0]) {
                     setupAudioAnalysis(targetUserId, event.streams[0], true);
                 } else {
                     // Fallback: create stream from track
+                    console.log(`[Track] Using fallback stream creation for ${targetUserId}`);
                     const inboundStream = new MediaStream([event.track]);
                     setupAudioAnalysis(targetUserId, inboundStream, true);
                 }
             } catch (e) {
-                console.error(`Error handling track from ${targetUserId}:`, e);
+                console.error(`[Track Error] Error handling track from ${targetUserId}:`, e);
             }
         };
 
         if (isInitiator) {
+            console.log(`[Signaling] Creating offer for ${targetUserId}`);
             const offer = await peer.createOffer();
             await peer.setLocalDescription(offer);
             sendSignal({ type: 'offer', sdp: offer, target_user_id: targetUserId });
@@ -492,15 +632,41 @@ const VoiceManager: React.FC = () => {
     };
 
     const handleOffer = async (data: any) => {
+        console.log(`[Signaling] Received offer from ${data.sender_user_id}`);
+
+        // Clean up existing peer connection if any (Crucial for reconnection)
+        if (peers.current[data.sender_user_id]) {
+            console.warn(`[VoiceManager] Closing existing peer (Offer Handler) for ${data.sender_user_id}`);
+            peers.current[data.sender_user_id].close();
+            delete peers.current[data.sender_user_id];
+        }
+
         const peer = new RTCPeerConnection({
             iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
         });
         peers.current[data.sender_user_id] = peer;
 
+        peer.oniceconnectionstatechange = () => {
+            console.log(`[ICE Status] ${data.sender_user_id}: ${peer.iceConnectionState}`);
+            setPeersInfo(prev => ({
+                ...prev,
+                [data.sender_user_id]: {
+                    ...prev[data.sender_user_id],
+                    connectionStatus: peer.iceConnectionState
+                }
+            }));
+        };
+        peer.onicegatheringstatechange = () => {
+            console.log(`[ICE Gathering] ${data.sender_user_id}: ${peer.iceGatheringState}`);
+        };
+
         peer.onicecandidate = (event) => {
-            if (event.candidate) sendSignal({ type: 'ice-candidate', candidate: event.candidate, target_user_id: data.sender_user_id });
+            if (event.candidate) {
+                sendSignal({ type: 'ice-candidate', candidate: event.candidate, target_user_id: data.sender_user_id });
+            }
         };
         peer.ontrack = (event) => {
+            console.log(`[Track] Received remote track from ${data.sender_user_id} (Answerer)`, event.streams[0]);
             setupAudioAnalysis(data.sender_user_id, event.streams[0], true);
         };
 
@@ -508,18 +674,23 @@ const VoiceManager: React.FC = () => {
             localStream.current.getTracks().forEach(track => peer.addTrack(track, localStream.current!));
         }
 
+        if ((peer.signalingState as string) === 'closed') return;
         await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        if ((peer.signalingState as string) === 'closed') return;
 
         // Process queued candidates
         if (pendingCandidates.current[data.sender_user_id]) {
             console.log(`Processing ${pendingCandidates.current[data.sender_user_id].length} queued candidates for ${data.sender_user_id}`);
             for (const candidate of pendingCandidates.current[data.sender_user_id]) {
-                await peer.addIceCandidate(candidate);
+                if ((peer.signalingState as string) !== 'closed') {
+                    await peer.addIceCandidate(candidate);
+                }
             }
             delete pendingCandidates.current[data.sender_user_id];
         }
 
         const answer = await peer.createAnswer();
+        if ((peer.signalingState as string) === 'closed') return;
         await peer.setLocalDescription(answer);
 
         sendSignal({ type: 'answer', sdp: answer, target_user_id: data.sender_user_id });
@@ -527,14 +698,28 @@ const VoiceManager: React.FC = () => {
 
     const handleAnswer = async (data: any) => {
         const peer = peers.current[data.sender_user_id];
-        if (peer) {
-            await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        if (peer && (peer.signalingState as string) !== 'closed') {
+            if ((peer.signalingState as string) === 'stable') {
+                console.warn(`[Signaling] Received answer but state is already stable (ignored) for ${data.sender_user_id}`);
+                return;
+            }
+            try {
+                await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            } catch (err) {
+                console.error(`[Signaling] Error setting remote description for ${data.sender_user_id}:`, err);
+                return;
+            }
+            if ((peer.signalingState as string) === 'closed') return;
 
             // Process queued candidates
             if (pendingCandidates.current[data.sender_user_id]) {
                 console.log(`Processing ${pendingCandidates.current[data.sender_user_id].length} queued candidates for ${data.sender_user_id}`);
                 for (const candidate of pendingCandidates.current[data.sender_user_id]) {
-                    await peer.addIceCandidate(candidate);
+                    if ((peer.signalingState as string) !== 'closed') {
+                        try {
+                            await peer.addIceCandidate(candidate);
+                        } catch (e) { console.warn("Failed to add queued candidate", e); }
+                    }
                 }
                 delete pendingCandidates.current[data.sender_user_id];
             }
@@ -547,8 +732,12 @@ const VoiceManager: React.FC = () => {
 
         const candidate = new RTCIceCandidate(data.candidate);
 
-        if (peer && peer.remoteDescription) {
-            await peer.addIceCandidate(candidate);
+        if (peer && peer.remoteDescription && (peer.signalingState as string) !== 'closed') {
+            try {
+                await peer.addIceCandidate(candidate);
+            } catch (e) {
+                console.warn("Failed to add ICE candidate:", e);
+            }
         } else {
             // Queue candidate if peer doesn't exist or remote description not set
             console.log(`Queueing ICE candidate for ${data.sender_user_id} (not ready)`);
@@ -729,7 +918,7 @@ const VoiceManager: React.FC = () => {
                                             {/* 아바타 */}
                                             <div style={{
                                                 width: '40px', height: '40px', borderRadius: '50%',
-                                                background: msg.senderId === myUserId ? '#5865f2' : '#23a55a',
+                                                background: getUserColor(msg.senderId),
                                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                 flexShrink: 0, fontWeight: 'bold', color: 'white'
                                             }}>

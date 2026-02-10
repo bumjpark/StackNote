@@ -8,7 +8,7 @@ class WorkspaceRequest(BaseModel):
     page_type: str
 
 class WorkspaceUserResponse(BaseModel):
-    id: int
+    work_space_id: int
     work_space_name: str
 
 class WorkspaceResponse(BaseModel):
