@@ -380,6 +380,18 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     // Memoize the getChildPages for private and team pages to avoid recalculation on every render
     // Actually, simple filtering is cheap enough for now.
 
+    // Switch view when channel selected
+    const handleChannelSelect = (channelId: string) => {
+        selectChannel(channelId);
+        setIsVoiceViewActive(true);
+    };
+
+    // Switch view when page selected
+    const handlePageSelect = (pageId: string) => {
+        selectPage(pageId);
+        setIsVoiceViewActive(false);
+    };
+
     const renderPageTree = (pages: Page[], type: 'private' | 'team') => {
         const rootPages = getChildPages(pages, null);
 
@@ -394,7 +406,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                 depth={0}
                 getChildPages={(parentId) => getChildPages(pages, parentId)}
                 currentPageId={currentPage?.id || ''}
-                onSelect={selectPage}
+                onSelect={handlePageSelect}
                 onUpdateIcon={updatePageIcon}
                 onDelete={deletePage}
                 onCreateSubPage={(parentId) => {
@@ -405,18 +417,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             />
         ));
     }
-
-    // Switch view when channel selected
-    const handleChannelSelect = (channelId: string) => {
-        selectChannel(channelId);
-        setIsVoiceViewActive(true);
-    };
-
-    // Switch view when page selected
-    const handlePageSelect = (pageId: string) => {
-        selectPage(pageId);
-        setIsVoiceViewActive(false);
-    };
 
     // Reset view if disconnected
     useEffect(() => {
