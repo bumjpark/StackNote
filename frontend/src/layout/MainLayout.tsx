@@ -265,6 +265,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         currentPage,
         currentChannel,
         createWorkspace,
+        deleteWorkspace,
         createPage,
         createChannel,
         inviteMember,
@@ -596,6 +597,25 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         >
                             <Plus size={14} /> Create Workspace
                         </div>
+
+                        {currentWorkspace && (
+                            <div
+                                onClick={() => {
+                                    deleteWorkspace(currentWorkspace.id);
+                                    setShowWorkspaceMenu(false);
+                                }}
+                                style={{
+                                    padding: '0.5rem',
+                                    fontSize: '0.85rem',
+                                    cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                    color: '#ef4444' // Red warning color
+                                }}
+                                className="hover:bg-white/5"
+                            >
+                                <Trash2 size={14} /> Delete Workspace
+                            </div>
+                        )}
                     </div>
                 )}
 

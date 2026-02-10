@@ -46,6 +46,7 @@ interface WorkspaceContextType {
     currentPage: Page | null;
     currentChannel: VoiceChannel | null;
     createWorkspace: (name: string, type: 'private' | 'team') => void;
+    deleteWorkspace: (workspaceId: string) => Promise<void>;
     createPage: (workspaceId: string, title: string, type: 'private' | 'team', parentId?: string) => void;
     createChannel: (workspaceId: string, name: string) => void;
     inviteMember: (workspaceId: string, email: string) => Promise<void>;
@@ -246,6 +247,40 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             // new workspace has no pages yet
         } catch (error) {
             console.error("Failed to create workspace:", error);
+        }
+    };
+
+    const deleteWorkspace = async (workspaceId: string) => {
+        try {
+            if (!confirm("Are you sure you want to delete this workspace? This action cannot be undone.")) {
+                return;
+            }
+
+            await api.delete(`/workspace/${workspaceId}`);
+
+            // Remove from local state
+            setWorkspaces(prev => prev.filter(w => w.id !== workspaceId));
+
+            // Perform selection update based on current state closure (which is consistent enough here)
+            // Or better: filter current `workspaces` (from closure) to find next candidate.
+            // Since we know we are deleting `workspaceId`.
+
+            const remaining = workspaces.filter(w => w.id !== workspaceId);
+            if (currentWorkspaceId === workspaceId) {
+                if (remaining.length > 0) {
+                    const first = remaining[0];
+                    setCurrentWorkspaceId(first.id);
+                    if (first.privatePages.length > 0) setCurrentPageId(first.privatePages[0].id);
+                    else if (first.teamPages.length > 0) setCurrentPageId(first.teamPages[0].id);
+                    else setCurrentPageId('');
+                } else {
+                    setCurrentWorkspaceId('');
+                    setCurrentPageId('');
+                }
+            }
+        } catch (error) {
+            console.error("Failed to delete workspace:", error);
+            alert("Failed to delete workspace.");
         }
     };
 
@@ -610,6 +645,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             currentPage,
             currentChannel: activeVoiceChannel, // Mapped to active global state
             createWorkspace,
+            deleteWorkspace,
             createPage,
 
             createChannel,
