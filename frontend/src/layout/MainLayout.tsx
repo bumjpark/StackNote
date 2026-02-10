@@ -783,6 +783,55 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                 }}>
                     {children}
                 </div>
+
+                {/* Active Call Floating Overlay */}
+                {currentChannel && !isVoiceViewActive && (
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '24px',
+                        right: '24px',
+                        backgroundColor: 'var(--bg-secondary)',
+                        padding: '0.75rem 1rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '1rem',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-color)',
+                        borderLeft: '4px solid #23a55a',
+                        zIndex: 50,
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{
+                                width: '8px', height: '8px',
+                                borderRadius: '50%', background: '#23a55a',
+                                boxShadow: '0 0 8px #23a55a'
+                            }} />
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>통화 중</span>
+                                <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{currentChannel.name || '음성 채널'}</span>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setIsVoiceViewActive(true)}
+                            style={{
+                                padding: '0.4rem 0.8rem',
+                                background: 'var(--accent-primary)',
+                                border: 'none',
+                                borderRadius: '4px',
+                                color: 'white',
+                                fontSize: '0.8rem',
+                                cursor: 'pointer',
+                                fontWeight: 500,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                            }}
+                        >
+                            <Mic size={14} /> 통화 화면
+                        </button>
+                    </div>
+                )}
             </main>
         </div>
     );
