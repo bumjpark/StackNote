@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 
 import "@blocknote/mantine/style.css";
-import { useCreateBlockNote } from "@blocknote/react";
+import { useCreateBlockNote, getDefaultReactSlashMenuItems } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { type Block } from "@blocknote/core";
 import api from "../api/client";
@@ -34,8 +34,45 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
     const [saveStatus, setSaveStatus] = React.useState<'saved' | 'saving' | 'dirty'>('saved');
 
     // Creates a new editor instance.
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
     const editor = useCreateBlockNote({
         initialContent: initialContent,
+        uploadFile: async (file: File) => {
+            const body = new FormData();
+            body.append('file', file);
+            try {
+                const response = await api.post('/upload', body, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+                return response.data.url;
+            } catch (error) {
+                console.error("Image upload failed", error);
+                throw error;
+            }
+        },
+        // Remove default image to replace with custom one
+        slashMenuItems: async (_query: string) => {
+            // Get default items
+            const defaultItems = await getDefaultReactSlashMenuItems(editor);
+
+            // Filter out default Image
+            const filtered = defaultItems.filter(item => item.title !== "Image");
+
+            // Add custom Image item
+            const customImageItem = {
+                title: "Image",
+                onItemClick: () => {
+                    fileInputRef.current?.click();
+                },
+                aliases: ["image", "img", "picture"],
+                group: "Media",
+                icon: <div style={{ fontSize: '1.2em' }}>🖼️</div>,
+                subtext: "Upload an image from your computer"
+            };
+
+            return [customImageItem, ...filtered];
+        }
     });
 
     // Ref to prevent save loop during fetch
@@ -378,6 +415,42 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                 style={{
                     background: 'transparent',
                     color: 'var(--text-primary)'
+                }}
+            />
+            <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                accept="image/*"
+                onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                        try {
+                            if (!editor.uploadFile) {
+                                throw new Error("Upload function not configured");
+                            }
+                            const url = await editor.uploadFile(file);
+                            if (url) {
+                                // Insert image block
+                                editor.insertBlocks(
+                                    [{
+                                        type: "image",
+                                        props: {
+                                            url: url as string
+                                        }
+                                    }],
+                                    editor.getTextCursorPosition().block,
+                                    "after"
+                                );
+                            }
+                        } catch (error) {
+                            console.error("Failed to upload/insert image", error);
+                            alert("Failed to upload image.");
+                        } finally {
+                            // Reset input
+                            if (fileInputRef.current) fileInputRef.current.value = '';
+                        }
+                    }
                 }}
             />
         </div>
