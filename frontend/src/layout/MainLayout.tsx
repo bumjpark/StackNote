@@ -166,7 +166,7 @@ const PageTreeItem: React.FC<PageTreeItemProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column' }}>
             <div
                 style={{
-                    padding: `0.4rem 0.75rem 0.4rem ${0.75 + depth * 0.8}rem`,
+                    padding: `0.4rem 0.75rem 0.4rem ${0.4 + depth * 0.8}rem`,
                     fontSize: '0.9rem',
                     display: 'flex', alignItems: 'center', gap: '0.25rem',
                     background: isSelected ? 'rgba(255,255,255,0.05)' : 'transparent',
