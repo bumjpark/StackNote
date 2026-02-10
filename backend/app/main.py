@@ -80,3 +80,24 @@ if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+from fastapi import File, UploadFile
+import shutil
+import uuid
+
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    """
+    Generic file upload endpoint.
+    Returns the URL of the uploaded file.
+    """
+    # Generate unique filename
+    file_extension = file.filename.split(".")[-1] if "." in file.filename else "png"
+    unique_filename = f"{uuid.uuid4()}.{file_extension}"
+    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+    
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    # Return URL
+    return {"url": f"/uploads/{unique_filename}"}

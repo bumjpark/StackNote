@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useWorkspace, type VoiceParticipant } from '../../context/WorkspaceContext';
-import { Mic, MicOff, PhoneOff, Volume2, VolumeX, MessageSquare, ChevronDown, PlusCircle, Gift, StickyNote, Smile, Link, Pin, Reply, Forward, Trash2, Pencil, MoreHorizontal } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Volume2, VolumeX, MessageSquare, ChevronDown, PlusCircle, Gift, StickyNote, Smile, Link, Pin, Reply, Forward, Trash2, Pencil, MoreHorizontal, UploadCloud } from 'lucide-react';
+import api from '../../api/client';
 
 const ENABLE_VOICE = true;
 
@@ -51,6 +52,7 @@ const VoiceManager: React.FC = () => {
     const [showChat, setShowChat] = useState(true); // Default to true for full-height panel
     const [chatInput, setChatInput] = useState('');
     const chatEndRef = useRef<HTMLDivElement>(null);
+    const [isDragOver, setIsDragOver] = useState(false);
 
     // Store info about peers: { [userId]: { username, isSpeaking } }
     const [peersInfo, setPeersInfo] = useState<Record<string, PeerInfo>>({});
@@ -357,6 +359,53 @@ const VoiceManager: React.FC = () => {
         for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
         return sum / dataArray.length;
     }
+
+    // Drag and Drop Handlers
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isDragOver) setIsDragOver(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+        setIsDragOver(false);
+    };
+
+    const handleDrop = async (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
+
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+            const file = files[0];
+            if (!file.type.startsWith('image/')) {
+                alert("Please upload an image file.");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                // Optimistic UI update or loading state could go here
+                const response = await api.post('/upload', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+                const imageUrl = response.data.url;
+
+                // Send image URL as chat message
+                await handleSendChat(imageUrl);
+
+            } catch (error) {
+                console.error("Image upload failed", error);
+                alert("Failed to upload image.");
+            }
+        }
+    };
 
     const setupAudioAnalysis = (id: string, stream: MediaStream, connectToSpeakers: boolean) => {
         if (!audioContext.current || audioContext.current.state === 'closed') return;
@@ -813,7 +862,34 @@ const VoiceManager: React.FC = () => {
                         flexDirection: 'column',
                         height: '350px',
                         background: 'transparent',
-                    }}>
+                        position: 'relative', // For overlay positioning
+                    }}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                    >
+                        {/* Drag Overlay */}
+                        {isDragOver && (
+                            <div style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                background: 'rgba(0,0,0,0.7)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                zIndex: 100,
+                                borderRadius: '8px',
+                                border: '2px dashed #5865f2',
+                                color: '#f2f3f5'
+                            }}>
+                                <UploadCloud size={48} color="#5865f2" />
+                                <div style={{ marginTop: '12px', fontWeight: 600, fontSize: '1.2rem' }}>Drop to Upload</div>
+                            </div>
+                        )}
                         <div style={{
                             flex: 1,
                             overflowY: 'auto',
@@ -885,7 +961,22 @@ const VoiceManager: React.FC = () => {
                                                 width: '100%',
                                                 boxSizing: 'border-box'
                                             }}>
-                                                {msg.content}
+                                                {msg.content.startsWith('/uploads/') || msg.content.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                                                    <img
+                                                        src={msg.content}
+                                                        alt="Uploaded content"
+                                                        style={{
+                                                            maxWidth: '100%',
+                                                            maxHeight: '300px',
+                                                            borderRadius: '8px',
+                                                            marginTop: '4px',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                        onClick={() => window.open(msg.content, '_blank')}
+                                                    />
+                                                ) : (
+                                                    msg.content
+                                                )}
                                             </div>
                                         </div>
                                     );
@@ -941,7 +1032,22 @@ const VoiceManager: React.FC = () => {
                                                     lineHeight: '1.4',
                                                     wordBreak: 'break-word',
                                                 }}>
-                                                    {msg.content}
+                                                    {msg.content.startsWith('/uploads/') || msg.content.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                                                        <img
+                                                            src={msg.content}
+                                                            alt="Uploaded content"
+                                                            style={{
+                                                                maxWidth: '100%',
+                                                                maxHeight: '300px',
+                                                                borderRadius: '8px',
+                                                                marginTop: '4px',
+                                                                cursor: 'pointer'
+                                                            }}
+                                                            onClick={() => window.open(msg.content, '_blank')}
+                                                        />
+                                                    ) : (
+                                                        msg.content
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -995,7 +1101,8 @@ const VoiceManager: React.FC = () => {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                borderTop: '1px solid rgba(0, 0, 0, 0.2)'
+                borderTop: '1px solid rgba(0, 0, 0, 0.2)',
+                position: 'relative', zIndex: 20
             }}>
                 <div style={{ display: 'flex', gap: '4px' }}>
                     <button
