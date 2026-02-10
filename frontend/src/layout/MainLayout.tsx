@@ -16,7 +16,8 @@ import {
     X,
     FileUp,
     Loader2,
-    ChevronRight
+    ChevronRight,
+    Pencil
 } from 'lucide-react';
 
 interface MainLayoutProps {
@@ -123,6 +124,7 @@ interface PageTreeItemProps {
     currentPageId: string;
     onSelect: (id: string) => void;
     onUpdateIcon: (id: string, icon: string) => void;
+    onUpdateTitle: (id: string, title: string) => void;
     onDelete: (id: string) => void;
     onCreateSubPage: (parentId: string) => void;
 }
@@ -134,13 +136,28 @@ const PageTreeItem: React.FC<PageTreeItemProps> = ({
     currentPageId,
     onSelect,
     onUpdateIcon,
+    onUpdateTitle,
     onDelete,
     onCreateSubPage
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
+    const [isRenaming, setIsRenaming] = useState(false);
+    const [renameValue, setRenameValue] = useState(page.title || '');
     const childPages = getChildPages(page.id);
     const hasChildren = childPages.length > 0;
     const isSelected = page.id === currentPageId;
+
+    // Reset rename value if page title changes externally
+    useEffect(() => {
+        setRenameValue(page.title || '');
+    }, [page.title]);
+
+    const handleRenameSubmit = () => {
+        if (renameValue.trim() && renameValue !== page.title) {
+            onUpdateTitle(page.id, renameValue);
+        }
+        setIsRenaming(false);
+    };
 
     // Expand if current page is inside this tree (simplification: expand if selected)
     // In a real app, we might want to check if any descendant is selected.
@@ -149,7 +166,7 @@ const PageTreeItem: React.FC<PageTreeItemProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column' }}>
             <div
                 style={{
-                    padding: `0.4rem 0.75rem 0.4rem ${0.75 + depth * 0.8}rem`,
+                    padding: `0.4rem 0.75rem 0.4rem ${0.4 + depth * 0.8}rem`,
                     fontSize: '0.9rem',
                     display: 'flex', alignItems: 'center', gap: '0.25rem',
                     background: isSelected ? 'rgba(255,255,255,0.05)' : 'transparent',
@@ -194,44 +211,84 @@ const PageTreeItem: React.FC<PageTreeItemProps> = ({
                 </div>
 
                 {/* Title */}
-                <span
-                    style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1 }}
-                >{page.title || 'Untitled'}</span>
+                {isRenaming ? (
+                    <input
+                        type="text"
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onBlur={handleRenameSubmit}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleRenameSubmit();
+                            if (e.key === 'Escape') {
+                                setRenameValue(page.title || '');
+                                setIsRenaming(false);
+                            }
+                            e.stopPropagation();
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        autoFocus
+                        style={{
+                            flex: 1,
+                            background: 'transparent',
+                            border: '1px solid var(--accent-primary)',
+                            borderRadius: '2px',
+                            color: 'var(--text-primary)',
+                            fontSize: 'inherit',
+                            outline: 'none',
+                            padding: '0 2px',
+                            minWidth: 0
+                        }}
+                    />
+                ) : (
+                    <span
+                        style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1 }}
+                    >{page.title || 'Untitled'}</span>
+                )}
 
                 {/* Actions (hover only) */}
-                <div
-                    className="hidden group-hover:flex"
-                    style={{
-                        opacity: 0.6,
-                        display: 'flex',
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: '4px'
-                    }}
-                >
-                    <div title="Add sub-page" className="cursor-pointer hover:text-white hover:opacity-100" style={{ display: 'flex' }}>
-                        <Plus
-                            size={14}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onCreateSubPage(page.id);
-                                setIsExpanded(true); // Auto expand when creating child
-                            }}
-                        />
+                {!isRenaming && (
+                    <div
+                        className="hidden group-hover:flex"
+                        style={{
+                            display: 'flex',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: '4px'
+                        }}
+                    >
+                        <div title="Add sub-page" className="cursor-pointer hover:text-white hover:opacity-100" style={{ display: 'flex', opacity: 0.6 }}>
+                            <Plus
+                                size={14}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onCreateSubPage(page.id);
+                                    setIsExpanded(true); // Auto expand when creating child
+                                }}
+                            />
+                        </div>
+                        <div title="Rename page" className="cursor-pointer hover:text-white hover:opacity-100" style={{ display: 'flex', opacity: 0.6 }}>
+                            <Pencil
+                                size={12}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsRenaming(true);
+                                }}
+                            />
+                        </div>
+                        <div title="Delete page" className="cursor-pointer hover:text-red-400 hover:opacity-100" style={{ display: 'flex', opacity: 0.6 }}>
+                            <Trash2
+                                size={14}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (confirm(`Delete "${page.title || 'Untitled'}"?`)) {
+                                        onDelete(page.id);
+                                    }
+                                }}
+                                style={{ opacity: 0.5 }}
+                            />
+                        </div>
                     </div>
-                    <div title="Delete page" className="cursor-pointer hover:text-red-400 hover:opacity-100" style={{ display: 'flex' }}>
-                        <Trash2
-                            size={14}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                if (confirm(`Delete "${page.title || 'Untitled'}"?`)) {
-                                    onDelete(page.id);
-                                }
-                            }}
-                            style={{ opacity: 0.5 }}
-                        />
-                    </div>
-                </div>
+                )}
             </div>
 
             {/* Children */}
@@ -246,6 +303,7 @@ const PageTreeItem: React.FC<PageTreeItemProps> = ({
                             currentPageId={currentPageId}
                             onSelect={onSelect}
                             onUpdateIcon={onUpdateIcon}
+                            onUpdateTitle={onUpdateTitle}
                             onDelete={onDelete}
                             onCreateSubPage={onCreateSubPage}
                         />
@@ -265,6 +323,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         currentPage,
         currentChannel,
         createWorkspace,
+        deleteWorkspace,
         createPage,
         createChannel,
         inviteMember,
@@ -276,6 +335,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         respondInvitation,
         updateWorkspaceName,
         updatePageIcon,
+        updatePageTitle, // [NEW] Added for renaming
         fetchMembers,
         uploadPdf
     } = useWorkspace();
@@ -359,9 +419,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const handleAddWorkspace = () => {
         const name = prompt('Enter new workspace name:', 'New Workspace');
         if (name) {
-            const typeInput = prompt('Enter workspace type (private/team):', 'team');
-            const type = (typeInput?.toLowerCase() === 'team') ? 'team' : 'private';
-            createWorkspace(name, type);
+            // Default to 'team' type as workspace type is redundant (both page types are available anyway)
+            createWorkspace(name, 'team');
             setShowWorkspaceMenu(false);
         }
     };
@@ -408,6 +467,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                 currentPageId={currentPage?.id || ''}
                 onSelect={handlePageSelect}
                 onUpdateIcon={updatePageIcon}
+                onUpdateTitle={updatePageTitle}
                 onDelete={deletePage}
                 onCreateSubPage={(parentId) => {
                     if (currentWorkspace) {
@@ -596,6 +656,25 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         >
                             <Plus size={14} /> Create Workspace
                         </div>
+
+                        {currentWorkspace && (
+                            <div
+                                onClick={() => {
+                                    deleteWorkspace(currentWorkspace.id);
+                                    setShowWorkspaceMenu(false);
+                                }}
+                                style={{
+                                    padding: '0.5rem',
+                                    fontSize: '0.85rem',
+                                    cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                    color: '#ef4444' // Red warning color
+                                }}
+                                className="hover:bg-white/5"
+                            >
+                                <Trash2 size={14} /> Delete Workspace
+                            </div>
+                        )}
                     </div>
                 )}
 
