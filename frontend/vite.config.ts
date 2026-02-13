@@ -7,6 +7,11 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    cors: true, // CORS 허용
+    hmr: {
+      clientPort: 443, // Cloudflare Tunnel(HTTPS) 사용 시 필수
+      // protocol: 'wss', // HTTPS를 쓴다면 wss로 강제할 수도 있음
+    },
     allowedHosts: true, // Allow Cloudflare/Tunnel hosts
     watch: {
       usePolling: true,
@@ -30,6 +35,7 @@ export default defineConfig({
         target: 'ws://voice-backend:8000',
         ws: true,
         changeOrigin: true,
+        secure: false, // 내부 통신은 암호화 안 함
       },
     }
   },
