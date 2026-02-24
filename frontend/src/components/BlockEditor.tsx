@@ -131,46 +131,6 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
 
                 let initialBlocks = reconstruct(dbBlocks);
 
-                const nestBlocksByHeaders = (blocks: Block[]): Block[] => {
-                    const root: Block[] = [];
-                    const stack: { block: any, level: number }[] = [];
-
-                    blocks.forEach((block) => {
-                        const b = { ...block, children: block.children ? [...block.children] : [] } as any;
-                        let level = 99;
-                        if (b.type === "heading") level = b.props?.level || 1;
-                        if (b.type === "divider") level = 0;
-
-                        while (stack.length > 0) {
-                            const parent = stack[stack.length - 1];
-                            if (parent.level >= level && parent.level !== 99) {
-                                stack.pop();
-                            } else {
-                                break;
-                            }
-                        }
-
-                        if (stack.length > 0) {
-                            const parentBlock = stack[stack.length - 1].block;
-                            if (!parentBlock.children) parentBlock.children = [];
-                            parentBlock.children.push(b);
-                        } else {
-                            root.push(b);
-                        }
-
-                        if (b.type === "heading") {
-                            stack.push({ block: b, level: level });
-                        }
-                    });
-                    return root;
-                };
-
-                try {
-                    initialBlocks = nestBlocksByHeaders(initialBlocks);
-                } catch (e) {
-                    console.error("Nesting failed", e);
-                }
-
                 if (JSON.stringify(initialBlocks) !== JSON.stringify(editor.document)) {
                     editor.replaceBlocks(editor.document, initialBlocks);
                     if (!isPolling) setBlocks(initialBlocks);
@@ -351,26 +311,48 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                     letter-spacing: -0.012em !important;
                 }
                 
-                .bn-block-content[data-content-type="heading"][data-level="1"] {
-                    font-size: 2.25rem !important;
-                    font-weight: 700 !important;
+                /* data-level 선택자 + 실제 h1 태그 + .bn-heading 클래스까지 통합하여 스타일 강제 적용 */
+                .bn-block-content[data-content-type="heading"][data-level="1"],
+                .bn-block-content[data-content-type="heading"] h1,
+                .bn-heading[data-level="1"] {
+                    font-size: 2.5rem !important;
+                    font-weight: 800 !important;
                     line-height: 1.2 !important;
-                    margin-top: 4.5rem !important; /* 극단적인 상단 여백으로 섹션 구분 */
-                    margin-bottom: 0.75rem !important;
+                    margin-top: 3.5rem !important;
+                    margin-bottom: 1rem !important;
+                    color: #FFFFFF !important;
                 }
                 .bn-block-content[data-content-type="heading"][data-level="2"] {
-                    font-size: 1.75rem !important;
-                    font-weight: 600 !important;
+                    font-size: 2rem !important;
+                    font-weight: 700 !important;
                     line-height: 1.3 !important;
-                    margin-top: 3.5rem !important; /* 넉넉한 상단 여백 */
-                    margin-bottom: 0.5rem !important;
+                    margin-top: 2.5rem !important;
+                    margin-bottom: 0.8rem !important;
                 }
                 .bn-block-content[data-content-type="heading"][data-level="3"] {
+                    font-size: 1.6rem !important;
+                    font-weight: 700 !important;
+                    line-height: 1.4 !important;
+                    margin-top: 2rem !important;
+                    margin-bottom: 0.6rem !important;
+                }
+                .bn-block-content[data-content-type="heading"][data-level="4"] {
                     font-size: 1.35rem !important;
                     font-weight: 600 !important;
-                    line-height: 1.4 !important;
-                    margin-top: 2.5rem !important;
+                    margin-top: 1.5rem !important;
+                    margin-bottom: 0.5rem !important;
+                }
+                .bn-block-content[data-content-type="heading"][data-level="5"] {
+                    font-size: 1.15rem !important;
+                    font-weight: 600 !important;
+                    margin-top: 1.2rem !important;
                     margin-bottom: 0.4rem !important;
+                }
+                .bn-block-content[data-content-type="heading"][data-level="6"] {
+                    font-size: 1rem !important;
+                    font-weight: 600 !important;
+                    margin-top: 1rem !important;
+                    margin-bottom: 0.3rem !important;
                 }
 
                 /* 페이지 구분선 (Divider) 정밀 스타일링 (선택자 수정) */
