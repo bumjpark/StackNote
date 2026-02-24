@@ -141,14 +141,6 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                         if (b.type === "heading") level = b.props?.level || 1;
                         if (b.type === "divider") level = 0;
 
-                        // H1은 항상 루트에 배치 (H1 아래로 들여쓰기 방지)
-                        if (level === 1) {
-                            stack.length = 0; // 스택 비우기
-                            root.push(b);
-                            stack.push({ block: b, level: level });
-                            return;
-                        }
-
                         while (stack.length > 0) {
                             const parent = stack[stack.length - 1];
                             if (parent.level >= level && parent.level !== 99) {
@@ -359,9 +351,10 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                     letter-spacing: -0.012em !important;
                 }
                 
-                /* data-level 선택자 + 실제 <h1> 태그 선택자 이중 적용 (BlockNote 테마 오버라이드 대응) */
+                /* data-level 선택자 + 실제 h1 태그 + .bn-heading 클래스까지 통합하여 스타일 강제 적용 */
                 .bn-block-content[data-content-type="heading"][data-level="1"],
-                .bn-block-content[data-content-type="heading"] h1 {
+                .bn-block-content[data-content-type="heading"] h1,
+                .bn-heading[data-level="1"] {
                     font-size: 2.5rem !important;
                     font-weight: 800 !important;
                     line-height: 1.2 !important;
