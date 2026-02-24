@@ -7,9 +7,15 @@ from app.workspace import service as WorkspaceService
 from shared.schemas.workspace import WorkspaceRequest
 
 def create_user (new_user: UserPostRequest, db: Session):
+    existing_user = db.query(User).filter(User.email_id == new_user.email_id).first()
+    if existing_user:
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    nickname = new_user.nickname or new_user.email_id.split("@")[0]
     user = User(
             email_id = new_user.email_id,
-            pw = new_user.pw
+            pw = new_user.pw,
+            nickname = nickname
     )
     db.add(user)
     db.commit()
@@ -48,7 +54,12 @@ def login_user(email_id: str, pw: str, db: Session):
     if user.pw != pw:
         raise HTTPException(status_code=400, detail="The pw is not correct")
 
-    return {"status": "success", "message": "Successfully logged in", "user_id": user.id}
+    return {
+        "status": "success",
+        "message": "Successfully logged in",
+        "user_id": user.id,
+        "nickname": user.nickname or user.email_id.split("@")[0],
+    }
 
 def delete_user(user_id :int, db :Session):
     user = db.query(User).filter(User.id == user_id).first()

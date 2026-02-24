@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useWorkspace, type VoiceParticipant } from '../../context/WorkspaceContext';
 import { Mic, MicOff, PhoneOff, Volume2, VolumeX, MessageSquare, ChevronDown, PlusCircle, Gift, StickyNote, Smile, Link, Pin, Reply, Forward, Trash2, Pencil, MoreHorizontal, UploadCloud } from 'lucide-react';
 import api from '../../api/client';
@@ -38,6 +38,7 @@ const safeResume = async (ctx: AudioContext) => {
 const VoiceManager: React.FC = () => {
     const {
         currentChannel,
+        currentWorkspace,
         selectChannel,
         registerSendMessageHandler,
         getVoiceHistory,
@@ -75,10 +76,29 @@ const VoiceManager: React.FC = () => {
 
     const myUserId = useRef<string>(localStorage.getItem('user_id') || `user-${Math.floor(Math.random() * 1000)}`).current;
 
-    // Attempt to get email, fallback to ID based name
-    const myUsername = useRef<string>(
-        localStorage.getItem('user_email')?.split('@')[0] || `User ${myUserId.substring(0, 4)}`
-    ).current;
+    const memberNameMap = useMemo(() => {
+        const map = new Map<string, string>();
+        currentWorkspace?.members?.forEach(member => {
+            map.set(String(member.id), member.name);
+        });
+        return map;
+    }, [currentWorkspace]);
+
+    const [myUsername, setMyUsername] = useState<string>(() => {
+        return (
+            localStorage.getItem('user_nickname') ||
+            localStorage.getItem('user_email')?.split('@')[0] ||
+            `User ${myUserId.substring(0, 4)}`
+        );
+    });
+
+    useEffect(() => {
+        const nameFromMembers = memberNameMap.get(String(myUserId));
+        const nameFromStorage =
+            localStorage.getItem('user_nickname') ||
+            localStorage.getItem('user_email')?.split('@')[0];
+        setMyUsername(nameFromMembers || nameFromStorage || `User ${myUserId.substring(0, 4)}`);
+    }, [memberNameMap, myUserId]);
 
     // Helper to get consistent color from userId
     const getUserColor = (userId: string) => {
@@ -290,7 +310,7 @@ const VoiceManager: React.FC = () => {
                 })
                 .map(([uid, info]) => ({
                     userId: uid,
-                    username: info.username,
+                    username: memberNameMap.get(String(uid)) || info.username,
                     isSpeaking: info.isSpeaking
                 }))
         ];
@@ -529,10 +549,14 @@ const VoiceManager: React.FC = () => {
                 // 내 메시지는 이미 handleSendChat에서 넣었으므로 중복 방지 (id 등 비교 필요시)
                 if (data.sender_user_id === myUserId) return;
 
+                const resolvedSenderName =
+                    memberNameMap.get(String(data.sender_user_id)) ||
+                    data.username ||
+                    'Unknown';
                 setChatMessages(prev => [...prev.slice(-49), {
                     id: data.id || `msg-${Date.now()}-${Math.random()}`,
                     senderId: data.sender_user_id,
-                    senderName: data.username || 'Unknown',
+                    senderName: resolvedSenderName,
                     content: data.content,
                     timestamp: data.timestamp || Date.now()
                 }]);
@@ -542,10 +566,13 @@ const VoiceManager: React.FC = () => {
                 break;
             case 'identify':
                 if (String(data.sender_user_id) === String(myUserId)) return;
+                const resolvedName =
+                    memberNameMap.get(String(data.sender_user_id)) ||
+                    data.username;
                 setPeersInfo(prev => ({
                     ...prev,
                     [data.sender_user_id]: {
-                        username: data.username,
+                        username: resolvedName,
                         isSpeaking: false,
                         isMuted: false,
                         connectionStatus: 'connected'

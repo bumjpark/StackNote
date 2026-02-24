@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI,File, UploadFile
 from app.auth import router as user_router
 from app.workspace import router as workspace_router
 from app.workspace import block_router
@@ -7,6 +7,8 @@ from shared.database.core.database import engine, Base
 import time
 import logging
 from sqlalchemy.exc import OperationalError
+import shutil
+import uuid
 
 
 app = FastAPI(
@@ -81,9 +83,6 @@ if not os.path.exists(UPLOAD_DIR):
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
-from fastapi import File, UploadFile
-import shutil
-import uuid
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):

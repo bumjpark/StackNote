@@ -8,12 +8,14 @@ export interface LoginParams {
 export interface SignupParams {
     email_id: string;
     pw: string;
+    nickname: string;
 }
 
 export interface LoginResponse {
     status: string;
     message: string;
     user_id: string | number; // Backend schema says int? Adjust if needed
+    nickname?: string;
     // If backend returns token, add here. Currently implementation_plan assumed token but backend review showed simple response
     // Wait, backend `login_user` returns `{"status": "success", "message": "...", "user_id": ...}`
     // It does NOT return a token! The backend seems to be session-less or expects basic auth?

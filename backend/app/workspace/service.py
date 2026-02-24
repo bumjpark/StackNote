@@ -500,7 +500,7 @@ def get_workspace_members(db: Session, workspace_id: int):
          result.append({
             "id": owner.id,
             "email": owner.email_id,
-            "name": owner.email_id.split('@')[0], # Fallback name
+            "name": owner.nickname or owner.email_id.split('@')[0], # Fallback name
             "role": "owner"
         })
 
@@ -511,7 +511,7 @@ def get_workspace_members(db: Session, workspace_id: int):
              result.append({
                 "id": user.id,
                 "email": user.email_id,
-                "name": user.email_id.split('@')[0],
+                "name": user.nickname or user.email_id.split('@')[0],
                 "role": m.role
             })
             
@@ -520,7 +520,7 @@ def get_voice_chat_history(db: Session, channel_id: str):
     """
     특정 음성 채널의 채팅 내역 조회 (사용자 이름 포함)
     """
-    results = db.query(VoiceChat, User.email_id).join(
+    results = db.query(VoiceChat, User.email_id, User.nickname).join(
         User, VoiceChat.user_id == User.id
     ).filter(
         VoiceChat.channel_id == channel_id,
@@ -532,11 +532,11 @@ def get_voice_chat_history(db: Session, channel_id: str):
             "id": chat.id,
             "channel_id": chat.channel_id,
             "user_id": chat.user_id,
-            "sender_name": email_id.split('@')[0],
+            "sender_name": nickname or email_id.split('@')[0],
             "chat_content": chat.chat_content,
             "created_at": chat.created_at.isoformat() if chat.created_at else None
         }
-        for chat, email_id in results
+        for chat, email_id, nickname in results
     ]
 
 def save_voice_chat(db: Session, channel_id: str, user_id: int, content: str, chat_id: str = None):
