@@ -66,12 +66,12 @@
 
 ```mermaid
 graph TD
-    User([👤 사용자 브라우저]) <--> FE["Frontend\n(React/Vite, :8012)"]
-    FE <-- "REST API" --> BE["Main Backend\n(FastAPI, :8010)"]
-    FE <-- "WebSocket (P2P Signaling)" --> VO["Voice Backend\n(FastAPI, :8011)"]
-    BE <--> DB[("MySQL DB\n(:3307)")]
-    BE -- "PDF 분석 위임" --> PDF["PDF Backend\n(Docling+PyMuPDF, :8013)"]
-    PDF -- "크롭 이미지 저장" --> VOL[("공유 볼륨\n/uploads")]
+    User([👤 사용자 브라우저]) <--> FE["Frontend(React/Vite, :8012)"]
+    FE <-- "REST API" --> BE["Main Backend(FastAPI, :8010)"]
+    FE <-- "WebSocket (P2P Signaling)" --> VO["Voice Backend(FastAPI, :8011)"]
+    BE <--> DB[("MySQL DB(:3307)")]
+    BE -- "PDF 분석 위임" --> PDF["PDF Backend(Docling+PyMuPDF, :8013)"]
+    PDF -- "크롭 이미지 저장" --> VOL[("공유 볼륨/uploads")]
     BE -- "이미지 서빙" --> VOL
 ```
 
