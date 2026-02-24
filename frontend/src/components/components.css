@@ -3,6 +3,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    box-sizing: border-box;
     border-radius: 8px;
     font-weight: 500;
     cursor: pointer;
@@ -120,4 +121,22 @@
 .input-error-msg {
     font-size: 0.875rem;
     color: var(--error);
+}
+
+.email-group {
+    display: flex;
+    align-items: stretch;
+    gap: var(--spacing-sm);
+}
+
+.email-group .input-field {
+    flex: 1;
+}
+
+.email-check-btn {
+    align-self: stretch;
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: 1rem;
+    line-height: 1.2;
+    white-space: nowrap;
 }
