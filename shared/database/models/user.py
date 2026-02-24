@@ -11,7 +11,7 @@ class User(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     email_id = Column(String(50), nullable=False, unique=True)
-    pw = Column(String(100), nullable=False)
+    pw = Column(String(255), nullable=False)
     nickname = Column(String(30), nullable=True)
     
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(KST))
