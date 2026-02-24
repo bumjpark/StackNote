@@ -352,25 +352,43 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                 }
                 
                 .bn-block-content[data-content-type="heading"][data-level="1"] {
-                    font-size: 2.25rem !important;
-                    font-weight: 700 !important;
+                    font-size: 2.5rem !important;
+                    font-weight: 800 !important;
                     line-height: 1.2 !important;
-                    margin-top: 4.5rem !important; /* 극단적인 상단 여백으로 섹션 구분 */
-                    margin-bottom: 0.75rem !important;
+                    margin-top: 3.5rem !important;
+                    margin-bottom: 1rem !important;
                 }
                 .bn-block-content[data-content-type="heading"][data-level="2"] {
-                    font-size: 1.75rem !important;
-                    font-weight: 600 !important;
+                    font-size: 2rem !important;
+                    font-weight: 700 !important;
                     line-height: 1.3 !important;
-                    margin-top: 3.5rem !important; /* 넉넉한 상단 여백 */
-                    margin-bottom: 0.5rem !important;
+                    margin-top: 2.5rem !important;
+                    margin-bottom: 0.8rem !important;
                 }
                 .bn-block-content[data-content-type="heading"][data-level="3"] {
+                    font-size: 1.6rem !important;
+                    font-weight: 700 !important;
+                    line-height: 1.4 !important;
+                    margin-top: 2rem !important;
+                    margin-bottom: 0.6rem !important;
+                }
+                .bn-block-content[data-content-type="heading"][data-level="4"] {
                     font-size: 1.35rem !important;
                     font-weight: 600 !important;
-                    line-height: 1.4 !important;
-                    margin-top: 2.5rem !important;
+                    margin-top: 1.5rem !important;
+                    margin-bottom: 0.5rem !important;
+                }
+                .bn-block-content[data-content-type="heading"][data-level="5"] {
+                    font-size: 1.15rem !important;
+                    font-weight: 600 !important;
+                    margin-top: 1.2rem !important;
                     margin-bottom: 0.4rem !important;
+                }
+                .bn-block-content[data-content-type="heading"][data-level="6"] {
+                    font-size: 1rem !important;
+                    font-weight: 600 !important;
+                    margin-top: 1rem !important;
+                    margin-bottom: 0.3rem !important;
                 }
 
                 /* 페이지 구분선 (Divider) 정밀 스타일링 (선택자 수정) */
