@@ -131,46 +131,6 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
 
                 let initialBlocks = reconstruct(dbBlocks);
 
-                const nestBlocksByHeaders = (blocks: Block[]): Block[] => {
-                    const root: Block[] = [];
-                    const stack: { block: any, level: number }[] = [];
-
-                    blocks.forEach((block) => {
-                        const b = { ...block, children: block.children ? [...block.children] : [] } as any;
-                        let level = 99;
-                        if (b.type === "heading") level = b.props?.level || 1;
-                        if (b.type === "divider") level = 0;
-
-                        while (stack.length > 0) {
-                            const parent = stack[stack.length - 1];
-                            if (parent.level >= level && parent.level !== 99) {
-                                stack.pop();
-                            } else {
-                                break;
-                            }
-                        }
-
-                        if (stack.length > 0) {
-                            const parentBlock = stack[stack.length - 1].block;
-                            if (!parentBlock.children) parentBlock.children = [];
-                            parentBlock.children.push(b);
-                        } else {
-                            root.push(b);
-                        }
-
-                        if (b.type === "heading") {
-                            stack.push({ block: b, level: level });
-                        }
-                    });
-                    return root;
-                };
-
-                try {
-                    initialBlocks = nestBlocksByHeaders(initialBlocks);
-                } catch (e) {
-                    console.error("Nesting failed", e);
-                }
-
                 if (JSON.stringify(initialBlocks) !== JSON.stringify(editor.document)) {
                     editor.replaceBlocks(editor.document, initialBlocks);
                     if (!isPolling) setBlocks(initialBlocks);
