@@ -1,0 +1,73 @@
+version: '3.3'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: stacknote-backend
+    ports:
+      - "8010:8000" # Avoid conflict (8000) -> 8010
+    volumes:
+      - ./backend/sql_app.db:/app/sql_app.db
+      - ./backend/app:/app/app
+      - ./backend/app/uploads:/app/uploads # 공유 볼륨 (이미지 서빙용)
+    env_file:
+      - .env
+    depends_on:
+      - db
+    restart: always
+
+  voice-backend:
+    build:
+      context: .
+      dockerfile: voice-backend/Dockerfile
+    container_name: stacknote-voice-backend
+    ports:
+      - "8011:8000" # Voice 8011
+    volumes:
+      - ./voice-backend/app:/app/app
+    restart: always
+
+  pdf-backend:
+    build:
+      context: .
+      dockerfile: pdf-backend/Dockerfile
+    container_name: stacknote-pdf-backend
+    ports:
+      - "8013:8000"
+    volumes:
+      - ./pdf-backend/app:/app/app
+      - ./backend/app/uploads:/app/uploads # 공유 볼륨 (이미지 저장용)
+    deploy:
+      resources:
+        limits:
+          cpus: '3.6'
+    restart: always
+
+  frontend:
+    build: ./frontend
+    container_name: stacknote-frontend
+    ports:
+      - "8012:5173" # Avoid conflict (8080) -> 8012
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: always
+
+  db:
+    image: mysql:8.4
+    container_name: stacknote-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+    ports:
+      - "3307:3306" # Avoid conflict (3306) -> 3307
+    volumes:
+      - db_data:/var/lib/mysql
+    restart: always
+
+volumes:
+  db_data:

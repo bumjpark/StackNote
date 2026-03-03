@@ -1,0 +1,571 @@
+# backend/app/workspace/service.py
+
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+import uuid
+
+from shared.database.models.user import User
+from shared.database.models.workspace import WorkSpace, Page, VoiceChannel, WorkspaceMember, VoiceChat
+from shared.schemas.workspace import WorkspaceRequest, PageListCreateRequest, VoiceChannelCreateQuery, WorkspaceInviteRequest
+from shared.schemas.block import BlockCreate, BlockUpdate
+from fastapi import HTTPException
+from .constants import DEFAULT_PAGES
+def create_workspace(
+    db: Session,
+    workspace_data: WorkspaceRequest
+) -> WorkSpace:
+    """
+    워크스페이스 생성
+    """
+    workspace = WorkSpace(
+        user_id=workspace_data.user_id,
+        page_type=workspace_data.page_type,
+        work_space_name=workspace_data.work_space_name,
+    )
+    db.add(workspace)
+    db.commit()
+    db.refresh(workspace)
+    return workspace
+
+def get_workspaces_by_user(db: Session, user_id: int):
+    """
+    유저의 모든 워크스페이스 조회 (페이지 포함)
+    """
+    # 1. Owned workspaces
+    owned_workspaces = db.query(WorkSpace).filter(
+        WorkSpace.user_id == user_id,
+        WorkSpace.is_deleted == False
+    ).all()
+
+    # 2. Member workspaces (accepted only)
+    member_records = db.query(WorkspaceMember).filter(
+        WorkspaceMember.user_id == user_id,
+        WorkspaceMember.status == 'accepted'
+    ).all()
+    
+    member_workspaces = []
+    if member_records:
+        member_workspace_ids = [r.workspace_id for r in member_records]
+        member_workspaces = db.query(WorkSpace).filter(
+            WorkSpace.id.in_(member_workspace_ids),
+            WorkSpace.is_deleted == False
+        ).all()
+        
+    # Combine and distinct by ID
+    all_workspaces_map = {ws.id: ws for ws in owned_workspaces + member_workspaces}
+    workspaces = list(all_workspaces_map.values())
+    results = []
+    for ws in workspaces:
+         # 해당 워크스페이스의 페이지 조회
+        pages = db.query(Page).filter(
+            Page.workspace_id == ws.id,
+            Page.is_deleted == False
+        ).all()
+        
+        # 페이지 분류 (private/team) - 현재 모델엔 구분 컬럼이 없어서 workspace type을 따르거나 별도 로직 필요
+        # 임시로 워크스페이스 타입에 따라 전체 페이지를 넣음
+        
+        ws_data = {
+            "id": str(ws.id),
+            "name": ws.work_space_name,
+            "type": ws.page_type, # private or team
+            "privatePages": [],
+            "teamPages": [],
+            "voiceChannels": [] # Voice channels 구현 시 추가
+        }
+        
+        for p in pages:
+            # Determine page type based on p.page_type
+            # Default to workspace type if p.page_type is missing (backward compatibility)
+            current_type = p.page_type if p.page_type else ws.page_type
+            
+            # Normalize type string (handle "PRIVATE", "private", "TEAM", "team")
+            is_team = current_type in ["TEAM", "team"]
+            final_type = "team" if is_team else "private"
+
+            page_data = {
+                "id": str(p.id),
+                "title": p.page_name,
+                "icon": p.icon,
+                "content": "", # 목록 조회시엔 컨텐츠 제외 (가벼운 응답)
+                "icon": p.icon,
+                "content": "", # 목록 조회시엔 컨텐츠 제외 (가벼운 응답)
+                "type": final_type,
+                "parent_page_id": p.parent_page_id
+            }
+            
+            if final_type == "private":
+                # Only show private pages if they belong to the requesting user
+                if p.user_id == user_id:
+                    ws_data["privatePages"].append(page_data)
+            else:
+                ws_data["teamPages"].append(page_data)
+                
+        # Fetch Voice Channels
+        voice_channels = db.query(VoiceChannel).filter(
+            VoiceChannel.workspace_id == ws.id,
+            VoiceChannel.is_deleted == False
+        ).all()
+        
+        ws_data["voiceChannels"] = [
+            {
+                "id": vc.id,
+                "name": vc.name,
+                "users": [] # Realtime user status is handled via WebSocket/Redis usually, defaulting to empty
+            }
+            for vc in voice_channels
+        ]
+
+        results.append(ws_data)
+        
+    return results
+
+
+def delete_workspace(
+    db: Session,
+    workspace_id: int
+) -> WorkSpace | None:
+    """
+    워크스페이스 삭제 (soft delete)
+    """
+    workspace = (
+        db.query(WorkSpace)
+        .filter(
+            WorkSpace.id == workspace_id,
+            WorkSpace.is_deleted == False
+        )
+        .first()
+    )
+    if not workspace:
+        return None
+
+    workspace.is_deleted = True
+    db.commit()
+    db.refresh(workspace)
+    return workspace
+
+    return workspace
+
+
+def create_default_pages(
+    db: Session,
+    workspace_id: int,
+    user_id: int
+) -> list[str]:
+    """
+    워크스페이스 생성 시 기본 페이지 생성
+    """
+    created_page_ids: list[str] = []
+
+    for page in DEFAULT_PAGES:
+        if page["page_type"] == "VOICE":
+            # Create Voice Channel
+            new_channel = VoiceChannel(
+                workspace_id=workspace_id,
+                name=page["page_name"],
+                is_deleted=False
+            )
+            db.add(new_channel)
+            db.flush()
+        else:
+            # Create Page
+            new_page = Page(
+                workspace_id=workspace_id,
+                user_id=user_id,
+                page_name=page["page_name"],
+                page_type=page["page_type"],
+                is_deleted=False
+            )
+            db.add(new_page)
+            db.flush()  # id 생성
+            created_page_ids.append(new_page.id)
+    
+    db.commit()
+
+    return created_page_ids
+
+# =========================
+# Block CRUD & Logic
+# =========================
+# def get_blocks(db: Session, page_id: str):
+#     """
+#     페이지 내 모든 블록을 순서대로 조회
+#     """
+#     return db.query(Block).filter(
+#         Block.page_id == page_id,
+#         Block.is_deleted == False
+#     ).order_by(Block.order.asc()).all()
+
+# def create_block(db: Session, block_data: BlockCreate):
+#     """
+#     새 블록 생성
+#     """
+#     new_block_id = str(uuid.uuid4())
+#     block = Block(
+#         id=new_block_id,
+#         page_id=block_data.page_id,
+#         workspace_id=block_data.workspace_id,
+#         user_id=block_data.user_id,
+#         block_type=block_data.block_type,
+#         content=block_data.content,
+#         order=block_data.order,
+#         parent_id=block_data.parent_id
+#     )
+#     db.add(block)
+#     db.commit()
+#     db.refresh(block)
+#     return block
+
+# def update_block(db: Session, block_id: str, updates: BlockUpdate):
+#     """
+#     블록 수정
+#     """
+#     block = db.query(Block).filter(Block.id == block_id).first()
+#     if not block:
+#         return None
+    
+#     update_data = updates.dict(exclude_unset=True)
+#     for key, value in update_data.items():
+#         setattr(block, key, value)
+    
+#     db.commit()
+#     db.refresh(block)
+#     return block
+
+# def delete_block(db: Session, block_id: str):
+#     """
+#     블록 삭제 (Soft Delete)
+#     """
+#     block = db.query(Block).filter(Block.id == block_id).first()
+#     if not block:
+#         return None
+    
+#     block.is_deleted = True
+#     db.commit()
+#     return block
+
+# def move_block(db: Session, block_id: str, target_order: float):
+#     """
+#     블록 순서 이동
+#     """
+#     return update_block(db, block_id, BlockUpdate(order=target_order))
+
+def create_page_list(
+    db: Session,
+    page_list_data: PageListCreateRequest
+) -> list[str]:
+    """
+    페이지 리스트 생성 (여러 페이지 한번에)
+    """
+
+    created_page_ids: list[str] = []
+
+    for page_name in page_list_data.page_list:
+        page = Page(
+            workspace_id=page_list_data.work_space_id,
+            user_id=page_list_data.user_id,
+            page_name=page_name,
+            parent_page_id=page_list_data.parent_page_id,
+            is_deleted=False
+        )
+        db.add(page)
+        db.flush()  # id 생성
+        created_page_ids.append(page.id)
+
+    db.commit()
+
+    return created_page_ids
+
+def delete_page_list(
+    db: Session,
+    *,
+    workspace_id: int
+) -> int:
+    """
+    페이지 리스트 삭제 (워크스페이스 기준 soft delete)
+
+    return: 삭제된 페이지 개수
+    """
+
+    pages = (
+        db.query(Page)
+        .filter(
+            Page.workspace_id == workspace_id,
+            Page.is_deleted == False
+        )
+        .all()
+    )
+
+    if not pages:
+        return 0
+
+    for page in pages:
+        page.is_deleted = True
+
+    db.commit()
+
+    return len(pages)
+
+
+    return len(pages)
+
+def create_voice_channel(
+    db: Session,
+    query: VoiceChannelCreateQuery
+) -> VoiceChannel:
+    """
+    보이스 채널 생성 (권한 확인 포함)
+    """
+    # 1. 워크스페이스 확인
+    workspace = db.query(WorkSpace).filter(
+        WorkSpace.id == query.work_space_id,
+        WorkSpace.is_deleted == False
+    ).first()
+    
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # 2. 권한 확인 (소유자이거나 승인된 멤버여야 함)
+    is_owner = workspace.user_id == query.user_id
+    is_member = False
+    
+    if not is_owner:
+        membership = db.query(WorkspaceMember).filter(
+            WorkspaceMember.workspace_id == workspace.id,
+            WorkspaceMember.user_id == query.user_id,
+            WorkspaceMember.status == "accepted"
+        ).first()
+        if membership:
+            is_member = True
+            
+    if not (is_owner or is_member):
+        raise HTTPException(status_code=403, detail="Not authorized to create voice channels in this workspace")
+
+    channel = VoiceChannel(
+        workspace_id=query.work_space_id,
+        name=query.channel_name,
+        is_deleted=False
+    )
+    db.add(channel)
+    db.commit()
+    db.refresh(channel)
+    return channel
+
+def invite_member_to_workspace(
+    db: Session,
+    workspace_id: int,
+    invite_data: WorkspaceInviteRequest,
+    requester_id: int
+):
+    """
+    워크스페이스 멤버 초대
+    """
+    # 1. 워크스페이스 확인
+    workspace = db.query(WorkSpace).filter(
+        WorkSpace.id == workspace_id,
+        WorkSpace.is_deleted == False
+    ).first()
+    
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+        
+    # 2. 권한 확인 (현재는 소유자만 초대 가능)
+    if workspace.user_id != requester_id:
+        # TODO: 추후 관리자 권한 확인 로직 추가
+        raise HTTPException(status_code=403, detail="Only workspace owner can invite members")
+        
+    # 3. 워크스페이스 타입 확인 (개인 스페이스는 초대 불가) - Removed as every workspace has both private and team spaces
+    # if workspace.page_type == "private":
+    #      raise HTTPException(status_code=400, detail="Cannot invite members to a private workspace")
+
+    # 4. 대상 유저 확인
+    target_user = db.query(User).filter(User.email_id == invite_data.email).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found with this email")
+        
+    # 5. 이미 멤버인지 확인
+    if target_user.id == workspace.user_id:
+        raise HTTPException(status_code=400, detail="User is already the owner")
+        
+    existing_member = db.query(WorkspaceMember).filter(
+        WorkspaceMember.workspace_id == workspace.id,
+        WorkspaceMember.user_id == target_user.id
+    ).first()
+    
+    if existing_member:
+        raise HTTPException(status_code=409, detail="User is already a member")
+        
+    # 6. 멤버 추가
+    new_member = WorkspaceMember(
+        workspace_id=workspace.id,
+        user_id=target_user.id,
+        role="member",
+        status="pending"
+    )
+    db.add(new_member)
+    db.commit()
+    
+    return {"status": "success", "message": f"User {target_user.email_id} invited to workspace"}
+
+def get_user_invitations(db: Session, user_id: int):
+    """
+    대기 중인 초대 목록 조회
+    """
+    # 사용자가 'pending' 상태로 멤버에 포함된 워크스페이스 찾기
+    pending_memberships = db.query(WorkspaceMember).filter(
+        WorkspaceMember.user_id == user_id,
+        WorkspaceMember.status == "pending"
+    ).all()
+    
+    results = []
+    for pm in pending_memberships:
+        workspace = db.query(WorkSpace).filter(WorkSpace.id == pm.workspace_id).first()
+        if workspace:
+            results.append({
+                "workspace_id": workspace.id,
+                "workspace_name": workspace.work_space_name,
+                "inviter_id": workspace.user_id, # Assuming owner invited for now
+                "invited_at": pm.joined_at
+            })
+    return results
+
+def respond_invitation(db: Session, workspace_id: int, user_id: int, response: str):
+    """
+    초대 응답 (수락/거절)
+    """
+    member_record = db.query(WorkspaceMember).filter(
+        WorkspaceMember.workspace_id == workspace_id,
+        WorkspaceMember.user_id == user_id,
+        WorkspaceMember.status == "pending"
+    ).first()
+    
+    if not member_record:
+        raise HTTPException(status_code=404, detail="No pending invitation found")
+        
+    if response == "accepted":
+        member_record.status = "accepted"
+        db.commit()
+        return {"status": "success", "message": "Invitation accepted"}
+    elif response == "declined":
+        db.delete(member_record) # 거절 시 기록 삭제 (또는 declined status로 변경)
+        db.commit()
+        return {"status": "success", "message": "Invitation declined"}
+    else:
+        raise HTTPException(status_code=400, detail="Invalid response")
+
+def update_workspace(db: Session, workspace_id: int, name: str):
+    workspace = db.query(WorkSpace).filter(WorkSpace.id == workspace_id).first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    workspace.work_space_name = name
+    db.commit()
+    db.refresh(workspace)
+    return workspace
+
+def update_page(db: Session, page_id: str, updates: dict):
+    page = db.query(Page).filter(Page.id == page_id).first()
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+    
+    for key, value in updates.items():
+        if value is not None:
+            setattr(page, key, value)
+            
+    db.commit()
+    db.refresh(page)
+    return page
+    return service.respond_invitation(db, workspace_id, user_id, "declined")
+
+def get_workspace_members(db: Session, workspace_id: int):
+    """
+    워크스페이스의 멤버 목록 조회 (Accepted status only)
+    """
+    # 1. Fetch relations
+    members = db.query(WorkspaceMember).filter(
+        WorkspaceMember.workspace_id == workspace_id,
+        WorkspaceMember.status == 'accepted'
+    ).all()
+    
+    # 2. Add owner? (Owner might not be in WorkspaceMember table depending on logic, 
+    # but usually owner is implicitly a member. Let's check WorkSpace owner first.)
+    workspace = db.query(WorkSpace).filter(WorkSpace.id == workspace_id).first()
+    if not workspace:
+        return []
+
+    result = []
+    
+    # Add Owner
+    owner = db.query(User).filter(User.id == workspace.user_id).first()
+    if owner:
+         result.append({
+            "id": owner.id,
+            "email": owner.email_id,
+            "name": owner.nickname or owner.email_id.split('@')[0], # Fallback name
+            "role": "owner"
+        })
+
+    # Add Members
+    for m in members:
+        user = db.query(User).filter(User.id == m.user_id).first()
+        if user and user.id != workspace.user_id: # Avoid duplicate if owner is in member table
+             result.append({
+                "id": user.id,
+                "email": user.email_id,
+                "name": user.nickname or user.email_id.split('@')[0],
+                "role": m.role
+            })
+            
+    return result
+def get_voice_chat_history(db: Session, channel_id: str):
+    """
+    특정 음성 채널의 채팅 내역 조회 (사용자 이름 포함)
+    """
+    results = db.query(VoiceChat, User.email_id, User.nickname).join(
+        User, VoiceChat.user_id == User.id
+    ).filter(
+        VoiceChat.channel_id == channel_id,
+        VoiceChat.is_deleted == False
+    ).order_by(VoiceChat.created_at.asc()).all()
+
+    return [
+        {
+            "id": chat.id,
+            "channel_id": chat.channel_id,
+            "user_id": chat.user_id,
+            "sender_name": nickname or email_id.split('@')[0],
+            "chat_content": chat.chat_content,
+            "created_at": chat.created_at.isoformat() if chat.created_at else None
+        }
+        for chat, email_id, nickname in results
+    ]
+
+def save_voice_chat(db: Session, channel_id: str, user_id: int, content: str, chat_id: str = None):
+    """
+    음성 채팅 내역 저장
+    """
+    new_chat = VoiceChat(
+        id=chat_id or str(uuid.uuid4())[:10], # VoiceChat 모델의 id가 String(10)임
+        channel_id=channel_id,
+        user_id=user_id,
+        chat_content=content
+    )
+    db.add(new_chat)
+    db.commit()
+    db.refresh(new_chat)
+    return new_chat
+
+def delete_voice_chat(db: Session, chat_id: str) -> bool:
+    """
+    음성 채팅 내역 삭제 (Soft Delete)
+    """
+    chat = db.query(VoiceChat).filter(
+        VoiceChat.id == chat_id,
+        VoiceChat.is_deleted == False
+    ).first()
+    
+    if not chat:
+        return False
+        
+    chat.is_deleted = True
+    db.commit()
+    return True
