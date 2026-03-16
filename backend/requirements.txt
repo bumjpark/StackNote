@@ -10,3 +10,4 @@ passlib[argon2]>=1.7.4
 cryptography
 python-multipart
 httpx
+PyJWT>=2.8.0

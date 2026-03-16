@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from datetime import datetime
 from app.workspace import service as WorkspaceService
 from shared.schemas.workspace import WorkspaceRequest
-from app.auth.security import hash_password, verify_password, is_plain_password
+from app.auth.security import hash_password, verify_password, is_plain_password, create_access_token
 
 
 def create_user(new_user: UserPostRequest, db: Session):
@@ -71,7 +71,10 @@ def login_user(email_id: str, pw: str, db: Session):
         "status": "success",
         "message": "Successfully logged in",
         "user_id": user.id,
+        "id": user.id,
         "nickname": user.nickname or user.email_id.split("@")[0],
+        "access_token": create_access_token(data={"sub": str(user.id)}),
+        "token_type": "bearer",
     }
 
 
