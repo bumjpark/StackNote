@@ -19,7 +19,11 @@ from shared.database.core.database import get_db
 from shared.database.models.user import User
 from sqlalchemy.orm import Session
 
-# ... (rest of imports)
+# Argon2id 스킴 사용 (passlib는 기본적으로 Argon2id 타입 사용)
+pwd_context = CryptContext(
+    schemes=["argon2"],
+    deprecated="auto",
+)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="users/login")
 
