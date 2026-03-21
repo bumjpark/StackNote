@@ -3,6 +3,8 @@ from shared.schemas.auth import UserPostRequest, UserLoginRequest, UserLoginResp
 from . import service as UserServices
 from sqlalchemy.orm import Session
 from shared.database.core.database import get_db
+from .security import get_current_user
+from shared.database.models.user import User
 
 router = APIRouter()
 
@@ -11,8 +13,20 @@ def post_user(new_user:UserPostRequest, db : Session = Depends(get_db)):
     response = UserServices.create_user(new_user,db)
     return response
 
+@router.get("/me", description="현재 로그인된 유저 정보 조회", tags=["Users"])
+def get_user_me(current_user: User = Depends(get_current_user)):
+    return {
+        "id": current_user.id,
+        "email_id": current_user.email_id,
+        "nickname": current_user.nickname
+    }
+
 @router.get("/{user_id}",description="유저 정보 조회", tags=["Users"])
-def get_user(user_id : int, db : Session = Depends(get_db)):
+def get_user(
+    user_id : int, 
+    db : Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     response = UserServices.find_user(user_id,db)
     return response
 
@@ -21,9 +35,12 @@ def login_user(login_data:UserLoginRequest, db : Session = Depends(get_db)):
     response = UserServices.login_user(login_data.email_id, login_data.pw, db)
     return response
 
-@router.delete("/{user_id}",description="유저 탈퇴", tags=["Users"])
-def delete_user(user_id : int, db : Session = Depends(get_db)):
-    response = UserServices.delete_user(user_id=user_id, db=db)
+@router.delete("/me", description="유저 탈퇴", tags=["Users"])
+def delete_user_me(
+    db : Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    response = UserServices.delete_user(user_id=current_user.id, db=db)
     return response
 
 @router.post("/check_email", description="이메일 가입 여부 확인", tags=["Users"])

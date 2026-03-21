@@ -1,8 +1,10 @@
-from fastapi import FastAPI,File, UploadFile
+from fastapi import FastAPI,File, UploadFile, Depends
 from app.auth import router as user_router
 from app.workspace import router as workspace_router
 from app.workspace import block_router
 from app.workspace import voice_router
+from app.auth.security import get_current_user
+from shared.database.models.user import User
 from shared.database.core.database import engine, Base
 import time
 import logging
@@ -85,7 +87,10 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
     """
     Generic file upload endpoint.
     Returns the URL of the uploaded file.

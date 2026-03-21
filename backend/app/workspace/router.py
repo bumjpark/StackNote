@@ -21,6 +21,8 @@ from shared.schemas.workspace import (
 )
 from shared.schemas.block import BlockCreate, BlockUpdate, BlockResponse
 from . import pdf_service # [NEW]
+from app.auth.security import get_current_user
+from shared.database.models.user import User
 
 router = APIRouter(
     prefix="/workspace",
@@ -34,8 +36,11 @@ router = APIRouter(
 @router.post("", response_model=WorkspaceResponse)
 def create_workspace(
     request: WorkspaceRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
+    # request.user_id 대신 인증된 유저의 ID 사용
+    request.user_id = current_user.id
     # 1️⃣ 워크스페이스 생성
     workspace = service.create_workspace(
         db=db,
@@ -67,26 +72,26 @@ async def get_pdf_status():
 @router.post("/pages/upload-pdf")
 async def upload_pdf_and_create_page(
     workspace_id: int = Body(...),
-    user_id: int = Body(...),
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     PDF 파일을 업로드하고 분석하여 새로운 페이지를 생성합니다.
     (PDF Backend로 분석 위임 -> 결과 받아 DB 저장)
     """
-    return await pdf_service.process_pdf_upload(db, workspace_id, user_id, file)
+    return await pdf_service.process_pdf_upload(db, workspace_id, current_user.id, file)
 
 
-@router.get("/user/{user_id}")
+@router.get("/user/info")
 def get_user_workspaces(
-    user_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    유저의 모든 워크스페이스와 페이지 목록 조회
+    인증된 유저의 모든 워크스페이스와 페이지 목록 조회
     """
-    return service.get_workspaces_by_user(db, user_id)
+    return service.get_workspaces_by_user(db, current_user.id)
 
 
 # =========================
@@ -95,8 +100,10 @@ def get_user_workspaces(
 @router.delete("/{workspace_id}", response_model=WorkspaceResponse)
 def delete_workspace(
     workspace_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
+    # TODO: 워크스페이스 소유자만 삭제할 수 있도록 접근 제어 로직 추가 가능
     workspace = service.delete_workspace(db, workspace_id)
     if not workspace:
         raise HTTPException(
@@ -152,8 +159,11 @@ def delete_workspace(
 @router.post("/page_list", response_model=PageListCreateResponse)
 def create_page_list(
     request: PageListCreateRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
+    # 인증된 유저의 ID로 강제 설정
+    request.user_id = current_user.id
     created_page_ids = service.create_page_list(db, request)
 
     return PageListCreateResponse(
@@ -168,7 +178,8 @@ def create_page_list(
 @router.delete("/page_list/{page_id}", response_model=PageListCreateResponse)
 def delete_page_exact(
     page_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     page = db.query(Page).filter(
         Page.id == page_id,
@@ -191,8 +202,11 @@ def delete_page_exact(
 @router.post("/voice_channel", response_model=VoiceChannelCreateResponse)
 def create_voice_channel(
     query: VoiceChannelCreateQuery,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
+    # 인증된 유저의 ID로 강제 설정
+    query.user_id = current_user.id
     channel = service.create_voice_channel(db, query)
     return VoiceChannelCreateResponse(
         status="success",
@@ -204,17 +218,19 @@ def create_voice_channel(
 def invite_member(
     workspace_id: int,
     request: WorkspaceInviteRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     워크스페이스에 멤버 초대 (현재는 소유자만 가능)
     """
-    return service.invite_member_to_workspace(db, workspace_id, request, request.inviter_id)
+    return service.invite_member_to_workspace(db, workspace_id, request, current_user.id)
 
 @router.get("/{workspace_id}/members", response_model=List[WorkspaceMemberResponse])
 def get_members(
     workspace_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     워크스페이스 멤버 조회
@@ -225,7 +241,8 @@ def get_members(
 def update_workspace_name(
     workspace_id: int,
     updates: WorkspaceUpdate = Body(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     워크스페이스 이름 수정
@@ -243,41 +260,42 @@ def update_workspace_name(
 def update_page_details(
     page_id: str,
     updates: PageUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     페이지 정보 수정 (이름, 아이콘)
     """
     return service.update_page(db, page_id, updates.dict(exclude_unset=True))
 
-@router.get("/user/{user_id}/invitations", tags=["Workspace Invitation"])
+@router.get("/user/invitations/me", tags=["Workspace Invitation"])
 def get_invitations(
-    user_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     유저가 받은 대기 중인 초대 목록 조회
     """
-    return service.get_user_invitations(db, user_id)
+    return service.get_user_invitations(db, current_user.id)
 
 @router.post("/invitations/{workspace_id}/accept", tags=["Workspace Invitation"])
 def accept_invitation(
     workspace_id: int,
-    user_id: int = Body(..., embed=True),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     초대 수락
     """
-    return service.respond_invitation(db, workspace_id, user_id, "accepted")
+    return service.respond_invitation(db, workspace_id, current_user.id, "accepted")
 
 @router.post("/invitations/{workspace_id}/decline", tags=["Workspace Invitation"])
 def decline_invitation(
     workspace_id: int,
-    user_id: int = Body(..., embed=True),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     초대 거절
     """
-    return service.respond_invitation(db, workspace_id, user_id, "declined")
+    return service.respond_invitation(db, workspace_id, current_user.id, "declined")
