@@ -27,5 +27,20 @@ client.interceptors.request.use(
         return Promise.reject(error);
     }
 );
+// Interceptor for 401 errors (e.g. token expired)
+client.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response && error.response.status === 401) {
+            // Logout user
+            localStorage.removeItem('token');
+            localStorage.removeItem('user_id');
+            // We can't use useNavigate here as it's not a React component,
+            // but we can redirect with window.location
+            window.location.href = '/login';
+        }
+        return Promise.reject(error);
+    }
+);
 
 export default client;

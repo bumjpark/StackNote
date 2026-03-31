@@ -410,9 +410,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     };
 
     const handleLogout = () => {
-        sessionStorage.removeItem('token');
-        sessionStorage.removeItem('user_id');
-        sessionStorage.removeItem('user_email');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user_id');
+        localStorage.removeItem('user_email');
+        localStorage.removeItem('user_nickname');
         navigate('/login');
     };
 
