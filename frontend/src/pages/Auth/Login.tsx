@@ -29,22 +29,18 @@ const Login: React.FC = () => {
 
         try {
             const response = await authApi.login(formData);
-            if (response.status === 'success') {
-                // Store user_id or token
-                // Since backend doesn't return token, we just store user_id for now?
-                // Actually client.ts interceptor looks for 'token'.
-                // We'll store a dummy token or the user_id as token for now to make requests work if they need auth
-                // But the backend `get_db` doesn't check token. It just needs DB.
-                // Protected routes might need user_id.
-
+            if (response.status === 'success' && response.access_token) {
+                // Store JWT Token in localStorage (as expected by client.ts)
+                localStorage.setItem('token', response.access_token);
+                
+                // Store other info for app use
                 localStorage.setItem('user_id', String(response.user_id));
-                localStorage.setItem('user_email', formData.email_id); // Store email for display
+                localStorage.setItem('user_email', formData.email_id);
                 if (response.nickname) {
                     localStorage.setItem('user_nickname', response.nickname);
                 } else {
                     localStorage.removeItem('user_nickname');
                 }
-                localStorage.setItem('token', 'dummy-token-since-backend-no-jwt');
 
                 // Refresh workspaces before navigating (non-blocking)
                 try {

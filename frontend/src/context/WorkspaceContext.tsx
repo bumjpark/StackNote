@@ -176,13 +176,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
 
     const refreshWorkspaces = async () => {
         try {
-            const userId = localStorage.getItem('user_id');
-            if (!userId) {
-                setWorkspaces([]);
-                return;
-            }
-
-            const response = await api.get(`/workspace/user/${userId}`);
+            const response = await api.get('/workspace/user/info');
             const fetchedWorkspaces = response.data.map((ws: any) => ({
                 ...ws,
                 members: ws.members || [] // Initialize members if missing
@@ -379,9 +373,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
 
     const getInvitations = useCallback(async () => {
         try {
-            const userId = localStorage.getItem('user_id');
-            if (!userId) return [];
-            const response = await api.get(`/workspace/user/${userId}/invitations`);
+            const response = await api.get('/workspace/user/invitations/me');
             return response.data;
         } catch (error) {
             console.error("Failed to fetch invitations:", error);

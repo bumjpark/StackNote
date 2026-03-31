@@ -15,9 +15,9 @@ const client = axios.create({
 // Interceptor to add Auth Token
 client.interceptors.request.use(
     (config) => {
-        const token = sessionStorage.getItem('token');
+        const token = localStorage.getItem('token');
         if (token) {
-            config.headers['Authorization'] = `Bearer ${token}`; // Adjust scheme if backend uses something else
+            config.headers['Authorization'] = `Bearer ${token}`;
         }
         // Also user_id is often needed in headers or query params depending on API design,
         // but Bearer token is standard.

@@ -69,9 +69,11 @@ async def get_pdf_status():
     """
     return await pdf_service.check_pdf_status()
 
+from fastapi import APIRouter, Depends, HTTPException, Body, UploadFile, File, Form # Form 추가
+
 @router.post("/pages/upload-pdf")
 async def upload_pdf_and_create_page(
-    workspace_id: int = Body(...),
+    workspace_id: int = Form(...), # Body 대신 Form 사용
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
