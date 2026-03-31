@@ -37,7 +37,10 @@ client.interceptors.response.use(
             localStorage.removeItem('user_id');
             // We can't use useNavigate here as it's not a React component,
             // but we can redirect with window.location
-            window.location.href = '/login';
+            // Also avoid infinite redirect loop if we are already on login page
+            if (window.location.pathname !== '/login') {
+                window.location.href = '/login';
+            }
         }
         return Promise.reject(error);
     }

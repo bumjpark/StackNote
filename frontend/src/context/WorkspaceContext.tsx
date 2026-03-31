@@ -202,7 +202,11 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
 
     // Fetch initial data
     useEffect(() => {
-        refreshWorkspaces();
+        const token = localStorage.getItem('token');
+        const userId = localStorage.getItem('user_id');
+        if (token && userId) {
+            refreshWorkspaces();
+        }
     }, []);
 
 
