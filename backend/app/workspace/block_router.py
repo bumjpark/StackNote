@@ -5,6 +5,8 @@ from typing import List
 from shared.database.core.database import get_db
 from shared.schemas.block import BlockResponse, BlockSyncRequest
 from shared.database.crud import block as block_crud
+from app.auth.security import get_current_user
+from shared.database.models.user import User
 
 router = APIRouter(
     prefix="/pages/{page_id}/blocks",
@@ -12,7 +14,11 @@ router = APIRouter(
 )
 
 @router.get("", response_model=List[BlockResponse])
-def read_blocks(page_id: str, db: Session = Depends(get_db)):
+def read_blocks(
+    page_id: str, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Get all blocks for a specific page.
     """
@@ -23,7 +29,8 @@ def read_blocks(page_id: str, db: Session = Depends(get_db)):
 def sync_page_blocks(
     page_id: str, 
     request: BlockSyncRequest, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Sync (Upsert) a list of blocks for a page.

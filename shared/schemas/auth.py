@@ -21,6 +21,9 @@ class UserLoginRequest(BaseModel):
 
 class UserLoginResponse(BaseModel):
     id: int
+    nickname: str
+    access_token: str
+    token_type: str = "bearer"
 
 # 사용자 입력 모델
 class UserInput(BaseModel):

@@ -1,4 +1,6 @@
-from fastapi import APIRouter, File, UploadFile, HTTPException
+from fastapi import APIRouter, File, UploadFile, HTTPException, Depends
+from app.auth.security import get_current_user
+from shared.database.models.user import User
 from pathlib import Path
 import uuid
 from typing import Optional
@@ -38,20 +40,21 @@ def validate_pdf_file(file: UploadFile) -> None:
 @router.post("/upload")
 async def upload_pdf(
     file: UploadFile = File(...),
-    user_id: Optional[int] = None,
-    workspace_id: Optional[int] = None
+    workspace_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user)
 ):
     """
     PDF 파일 업로드
     
     Args:
         file: 업로드할 PDF 파일
-        user_id: 사용자 ID (선택)
         workspace_id: 워크스페이스 ID (선택)
+        current_user: 인증된 유저 (JWT)
     
     Returns:
         업로드된 파일 정보
     """
+    user_id = current_user.id
     try:
         # 파일 유효성 검사
         validate_pdf_file(file)
@@ -108,7 +111,9 @@ async def upload_pdf(
 
 
 @router.get("/files")
-async def list_files():
+async def list_files(
+    current_user: User = Depends(get_current_user)
+):
     """업로드된 PDF 파일 목록 조회"""
     try:
         files = []
@@ -133,7 +138,10 @@ async def list_files():
 
 
 @router.delete("/files/{file_id}")
-async def delete_file(file_id: str):
+async def delete_file(
+    file_id: str,
+    current_user: User = Depends(get_current_user)
+):
     """업로드된 PDF 파일 삭제"""
     try:
         # file_id로 시작하는 파일 찾기

@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from shared.database.core.database import get_db
 from shared.database.models.workspace import VoiceChat
 from . import service
+from app.auth.security import get_current_user
+from shared.database.models.user import User
 
 router = APIRouter(
     prefix="/voice",
@@ -14,7 +16,8 @@ router = APIRouter(
 @router.get("/{channel_id}/history")
 def get_voice_chat_history(
     channel_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     특정 음성 채널의 채팅 내역을 조회합니다.
@@ -25,20 +28,21 @@ def get_voice_chat_history(
 @router.post("/{channel_id}/chat")
 def save_voice_chat(
     channel_id: str,
-    user_id: int = Body(..., embed=True),
     content: str = Body(..., embed=True),
     id: str = Body(None, embed=True),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     음성 채팅 내역을 저장합니다.
     """
-    chat = service.save_voice_chat(db, channel_id, user_id, content, chat_id=id)
+    chat = service.save_voice_chat(db, channel_id, current_user.id, content, chat_id=id)
     return {"status": "success", "chat_id": chat.id}
 @router.delete("/chat/{chat_id}")
 def delete_voice_chat(
     chat_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     음성 채팅 내역을 삭제합니다.
