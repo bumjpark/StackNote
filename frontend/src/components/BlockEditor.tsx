@@ -233,15 +233,25 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                         return sorted;
                     };
                     const buildTree = (nodes: any[]): Block[] => {
-                        return nodes.map(n => ({
-                            id: n.id,
-                            type: n.type,
-                            props: n.props || {},
-                            content: n.content,
-                            children: buildTree((n.children_ids || [])
-                                .map((cid: string) => blockMap.get(cid))
-                                .filter((c: any) => c !== undefined))
-                        } as Block));
+                        return nodes.map(n => {
+                            const blockProps = (n.props && typeof n.props === 'object') ? n.props : {};
+                            
+                            const constructedBlock: any = {
+                                id: n.id,
+                                type: n.type,
+                                props: blockProps,
+                                children: buildTree((n.children_ids || [])
+                                    .map((cid: string) => blockMap.get(cid))
+                                    .filter((c: any) => c !== undefined))
+                            };
+
+                            // Prevent internal BlockNote crash by explicitly omitting 'content' if null
+                            if (n.content !== null && n.content !== undefined) {
+                                constructedBlock.content = n.content;
+                            }
+
+                            return constructedBlock as Block;
+                        });
                     };
                     return buildTree(sortNodes(rootBlocks));
                 };
@@ -256,8 +266,24 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                     (!editor.document[0].content || (Array.isArray(editor.document[0].content) && editor.document[0].content.length === 0)));
 
                 if (isDocumentEmpty && initialBlocks.length > 0) {
-                    editor.replaceBlocks(editor.document, initialBlocks);
-                    setBlocks(initialBlocks);
+                    try {
+                        if (editor.document.length === 0) {
+                            // If strictly empty array, we must create a placeholder to replace.
+                            editor.insertBlocks([{ type: "paragraph" }], editor.getTextCursorPosition().block || undefined as any, "after");
+                        }
+                        
+                        // Wait a microtask to let BlockNote digest if length was 0
+                        setTimeout(() => {
+                            try {
+                                editor.replaceBlocks(editor.document, initialBlocks);
+                                setBlocks(initialBlocks);
+                            } catch (err) {
+                                console.error("replaceBlocks fallback error", err);
+                            }
+                        }, 0);
+                    } catch (e) {
+                        console.error('Initial blocks injection failed', e);
+                    }
                 }
             }
         } catch (error) {
