@@ -258,6 +258,7 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                 };
 
                 let initialBlocks = reconstruct(dbBlocks);
+                setDebugText(`Page: ${pageId.substring(0,6)}.., Synced: ${isSynced}, DB Blocks: ${dbBlocks.length}, Editor length: ${editor.document.length}`);
 
                 // With Collaboration, we only load from DB if the document is completely empty
                 // Otherwise, we rely on the Hocuspocus server state.
@@ -278,15 +279,18 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                             try {
                                 editor.replaceBlocks(editor.document, initialBlocks);
                                 setBlocks(initialBlocks);
+                                setDebugText((prev) => prev + " | Replaced!");
                             } catch (err) {
                                 console.error("replaceBlocks fallback error", err);
                                 setDebugText("Replace Error: " + err);
                             }
-                        }, 0);
+                        }, 50); // Increased timeout slightly
                     } catch (e) {
                         console.error('Initial blocks injection failed', e);
                         setDebugText("Insert Error: " + e);
                     }
+                } else if (!isDocumentEmpty) {
+                    setDebugText((prev) => prev + " | Doc NOT empty, skipped DB load");
                 }
             }
         } catch (error) {
