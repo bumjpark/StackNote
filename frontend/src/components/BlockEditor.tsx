@@ -60,7 +60,7 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
 
     // Auto-save status: 'saved' | 'saving' | 'dirty' | 'loading'
     const [saveStatus, setSaveStatus] = React.useState<'saved' | 'saving' | 'dirty' | 'loading'>('saved');
-    const [debugText, setDebugText] = React.useState('');
+
 
     // User info for Collaboration (Cursors, Presence)
     const userInfo = React.useMemo(() => {
@@ -258,7 +258,7 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                 };
 
                 let initialBlocks = reconstruct(dbBlocks);
-                setDebugText(`Page: ${pageId.substring(0,6)}.., Synced: ${isSynced}, DB Blocks: ${dbBlocks.length}, Editor length: ${editor.document.length}`);
+
 
                 // With Collaboration, we only load from DB if the document is completely empty
                 // Otherwise, we rely on the Hocuspocus server state.
@@ -279,23 +279,17 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                             try {
                                 editor.replaceBlocks(editor.document, initialBlocks);
                                 setBlocks(initialBlocks);
-                                setDebugText((prev) => prev + " | Replaced!");
                             } catch (err) {
                                 console.error("replaceBlocks fallback error", err);
-                                setDebugText("Replace Error: " + err);
                             }
                         }, 50); // Increased timeout slightly
                     } catch (e) {
                         console.error('Initial blocks injection failed', e);
-                        setDebugText("Insert Error: " + e);
                     }
-                } else if (!isDocumentEmpty) {
-                    setDebugText((prev) => prev + " | Doc NOT empty, skipped DB load");
                 }
             }
         } catch (error) {
             console.error("Failed to fetch blocks", error);
-            setDebugText(`Fetch error: ${error}`);
         } finally {
             setTimeout(() => {
                 isFetchingRef.current = false;
@@ -422,7 +416,6 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                     backgroundColor: saveStatus === 'saved' ? '#4CAF50' : saveStatus === 'saving' ? '#FFC107' : '#F44336'
                 }} />
                 {saveStatus === 'saved' ? 'Saved to Cloud' : saveStatus === 'saving' ? 'Saving...' : 'Unsaved Changes'}
-                {debugText && <span style={{ marginLeft: '10px', color: '#ffaaaa' }}>{debugText}</span>}
             </div>
 
             {/* Custom CSS to force transparency on internal BlockNote/Mantine elements */}
