@@ -1,10 +1,21 @@
 import React, { useEffect, useRef } from "react";
 
 import "@blocknote/mantine/style.css";
-import { useCreateBlockNote, getDefaultReactSlashMenuItems } from "@blocknote/react";
+import { useCreateBlockNote, getDefaultReactSlashMenuItems, SuggestionMenuController } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
-import { type Block } from "@blocknote/core";
+import { type Block, BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
 import api from "../api/client";
+import { SmallCalendarBlock } from "./CalendarBlock";
+import { LargeCalendarBlock } from "./LargeCalendarBlock";
+
+// Create custom schema with Calendar blocks
+const schema = BlockNoteSchema.create({
+    blockSpecs: {
+        ...defaultBlockSpecs,
+        small_calendar: SmallCalendarBlock(),
+        large_calendar: LargeCalendarBlock(),
+    },
+});
 
 interface BlockEditorProps {
     pageId: string;
@@ -26,8 +37,8 @@ function useDebounce<T>(value: T, delay: number): T {
 
 const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
     // Stores the current blocks in the editor
-    const [blocks, setBlocks] = React.useState<Block[]>([]);
-    const [initialContent] = React.useState<Block[] | undefined>(undefined);
+    const [blocks, setBlocks] = React.useState<any[]>([]);
+    const [initialContent] = React.useState<any[] | undefined>(undefined);
     const [isLoading, setIsLoading] = React.useState<boolean>(true);
 
     // Auto-save status: 'saved' | 'saving' | 'dirty'
@@ -37,12 +48,13 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const editor = useCreateBlockNote({
+        schema,
         initialContent: initialContent,
         uploadFile: async (file: File) => {
             const body = new FormData();
             body.append('file', file);
             try {
-                const response = await api.post('/upload', body, {
+                const response = await api.post('/pages/upload', body, {
                     headers: { 'Content-Type': 'multipart/form-data' }
                 });
                 return response.data.url;
@@ -50,30 +62,69 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                 console.error("Image upload failed", error);
                 throw error;
             }
-        },
-        // Remove default image to replace with custom one
-        slashMenuItems: async (_query: string) => {
-            // Get default items
-            const defaultItems = await getDefaultReactSlashMenuItems(editor);
+        }
+    });
 
-            // Filter out default Image
-            const filtered = defaultItems.filter(item => item.title !== "Image");
+    // Handle items for suggestion menu
+    const getSlashMenuItems = async (query: string) => {
+        const defaultItems = await getDefaultReactSlashMenuItems(editor);
+        const filteredDefaults = defaultItems.filter(item => 
+            item.title !== "Image" && item.title !== "이미지"
+        );
 
-            // Add custom Image item
-            const customImageItem = {
-                title: "Image",
+        const myCustomItems = [
+            {
+                title: "Small Calendar",
+                onItemClick: () => {
+                    editor.insertBlocks(
+                        [{ type: "small_calendar" }],
+                        editor.getTextCursorPosition().block,
+                        "after"
+                    );
+                },
+                aliases: ["calendar", "cal", "todo", "schedule", "date", "캘린더", "일정", "할일", "작은"],
+                group: "Planner",
+                icon: "📅",
+                subtext: "클릭 시 일정이 나타나는 미니 캘린더를 삽입합니다."
+            },
+            {
+                title: "Large Calendar",
+                onItemClick: () => {
+                    editor.insertBlocks(
+                        [{ type: "large_calendar" }],
+                        editor.getTextCursorPosition().block,
+                        "after"
+                    );
+                },
+                aliases: ["large calendar", "cal", "todo", "schedule", "date", "캘린더", "대형", "일정", "할일", "큰"],
+                group: "Planner",
+                icon: "🗓️",
+                subtext: "한눈에 일정을 파악할 수 있는 대형 캘린더를 삽입합니다."
+            },
+            {
+                title: "Upload Image",
                 onItemClick: () => {
                     fileInputRef.current?.click();
                 },
-                aliases: ["image", "img", "picture"],
+                aliases: ["image", "img", "picture", "이미지", "사진", "업로드"],
                 group: "Media",
-                icon: <div style={{ fontSize: '1.2em' }}>🖼️</div>,
-                subtext: "Upload an image from your computer"
-            };
+                icon: "🖼️",
+                subtext: "컴퓨터에서 이미지를 선택하여 업로드합니다."
+            }
+        ];
 
-            return [customImageItem, ...filtered];
-        }
-    });
+        const allItems = [...myCustomItems, ...filteredDefaults];
+        const queryLower = query.toLowerCase();
+
+        return allItems.filter(item => {
+            const titleMatch = item.title.toLowerCase().includes(queryLower);
+            const aliasMatch = item.aliases?.some(alias => 
+                alias.toLowerCase().includes(queryLower)
+            );
+            const groupMatch = item.group?.toLowerCase().includes(queryLower);
+            return titleMatch || aliasMatch || groupMatch;
+        });
+    };
 
     // Ref to prevent save loop during fetch
     const isFetchingRef = useRef<boolean>(false);
@@ -387,18 +438,63 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
             `}</style>
             <BlockNoteView
                 editor={editor}
+                theme="dark"
+                slashMenu={false}
                 onChange={() => {
                     if (!isFetchingRef.current) {
                         setBlocks(editor.document);
                         setSaveStatus('dirty');
                     }
                 }}
-                theme="dark"
-                style={{
-                    background: 'transparent',
-                    color: 'var(--text-primary)'
-                }}
-            />
+            >
+                <SuggestionMenuController
+                    triggerCharacter="/"
+                    getItems={getSlashMenuItems}
+                    onItemClick={(item: any) => {
+                        item.onItemClick?.(editor);
+                    }}
+                    suggestionMenuComponent={(props: any) => (
+                        <div style={{ 
+                            background: '#25262B', 
+                            border: '1px solid #373A40', 
+                            borderRadius: '8px', 
+                            padding: '6px', 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            gap: '2px', 
+                            minWidth: '240px',
+                            maxHeight: '350px',
+                            overflowY: 'auto',
+                            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.1)' 
+                        }}>
+                            {props.items.map((item: any, index: number) => (
+                                <div 
+                                    key={index} 
+                                    style={{ 
+                                        padding: '10px 12px', 
+                                        borderRadius: '4px', 
+                                        cursor: 'pointer',
+                                        background: index === props.selectedIndex ? 'rgba(35, 131, 226, 0.28)' : 'transparent',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '12px',
+                                        transition: 'background-color 0.1s ease-in-out'
+                                    }}
+                                    onClick={() => props.onItemClick?.(item)}
+                                >
+                                    <span style={{ fontSize: '1.2em', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', color: '#c1c2c5' }}>
+                                        {item.icon}
+                                    </span>
+                                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                                        <span style={{ fontWeight: 500, fontSize: '14px', color: '#C1C2C5' }}>{item.title}</span>
+                                        {item.subtext && <span style={{ fontSize: '12px', color: '#909296', marginTop: '2px', lineHeight: 1.3 }}>{item.subtext}</span>}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                />
+            </BlockNoteView>
             <input
                 type="file"
                 ref={fileInputRef}
@@ -420,7 +516,7 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                                         props: {
                                             url: url as string
                                         }
-                                    }],
+                                    } as any],
                                     editor.getTextCursorPosition().block,
                                     "after"
                                 );
