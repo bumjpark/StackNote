@@ -81,8 +81,9 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
 
         const doc = new Y.Doc();
 
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const newProvider = new HocuspocusProvider({
-            url: `ws://${window.location.hostname}:8014`,
+            url: `${protocol}//${window.location.host}/collaboration`,
             name: `document-${pageId}`,
             document: doc,
         });

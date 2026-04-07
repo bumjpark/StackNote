@@ -37,6 +37,12 @@ export default defineConfig({
         changeOrigin: true,
         secure: false, // 내부 통신은 암호화 안 함
       },
+      '/collaboration': {
+        target: 'ws://collaboration-server:8000',
+        ws: true,
+        changeOrigin: true,
+        secure: false,
+      },
     }
   },
 })
