@@ -58,8 +58,9 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
     const [blocks, setBlocks] = React.useState<any[]>([]);
     const [isLoading, setIsLoading] = React.useState<boolean>(true);
 
-    // Auto-save status: 'saved' | 'saving' | 'dirty'
-    const [saveStatus, setSaveStatus] = React.useState<'saved' | 'saving' | 'dirty'>('saved');
+    // Auto-save status: 'saved' | 'saving' | 'dirty' | 'loading'
+    const [saveStatus, setSaveStatus] = React.useState<'saved' | 'saving' | 'dirty' | 'loading'>('saved');
+    const [debugText, setDebugText] = React.useState('');
 
     // User info for Collaboration (Cursors, Presence)
     const userInfo = React.useMemo(() => {
@@ -279,15 +280,18 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                                 setBlocks(initialBlocks);
                             } catch (err) {
                                 console.error("replaceBlocks fallback error", err);
+                                setDebugText("Replace Error: " + err);
                             }
                         }, 0);
                     } catch (e) {
                         console.error('Initial blocks injection failed', e);
+                        setDebugText("Insert Error: " + e);
                     }
                 }
             }
         } catch (error) {
             console.error("Failed to fetch blocks", error);
+            setDebugText(`Fetch error: ${error}`);
         } finally {
             setTimeout(() => {
                 isFetchingRef.current = false;
@@ -414,6 +418,7 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                     backgroundColor: saveStatus === 'saved' ? '#4CAF50' : saveStatus === 'saving' ? '#FFC107' : '#F44336'
                 }} />
                 {saveStatus === 'saved' ? 'Saved to Cloud' : saveStatus === 'saving' ? 'Saving...' : 'Unsaved Changes'}
+                {debugText && <span style={{ marginLeft: '10px', color: '#ffaaaa' }}>{debugText}</span>}
             </div>
 
             {/* Custom CSS to force transparency on internal BlockNote/Mantine elements */}
