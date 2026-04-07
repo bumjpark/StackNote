@@ -250,11 +250,12 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
 
                 // With Collaboration, we only load from DB if the document is completely empty
                 // Otherwise, we rely on the Hocuspocus server state.
-                const isDocumentEmpty = editor.document.length === 1 &&
+                const isDocumentEmpty = editor.document.length === 0 || 
+                    (editor.document.length === 1 &&
                     editor.document[0].type === "paragraph" &&
-                    (!editor.document[0].content || editor.document[0].content.length === 0);
+                    (!editor.document[0].content || (Array.isArray(editor.document[0].content) && editor.document[0].content.length === 0)));
 
-                if (isDocumentEmpty && JSON.stringify(initialBlocks) !== JSON.stringify(editor.document)) {
+                if (isDocumentEmpty && initialBlocks.length > 0) {
                     editor.replaceBlocks(editor.document, initialBlocks);
                     setBlocks(initialBlocks);
                 }
