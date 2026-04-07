@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { createReactBlockSpec } from "@blocknote/react";
-import { Plus, Trash2, CheckCircle, Circle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 
 // --- Types ---
 interface ToDo {

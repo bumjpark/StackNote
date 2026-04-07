@@ -36,17 +36,16 @@ const VoiceChannelItem: React.FC<VoiceChannelItemProps> = ({ channel, isActive, 
 
     // Helper to get consistent color from userId
     const getUserColor = (userId: string) => {
+        const pastelColors = [
+            "#FFADAD", "#FFD6A5", "#FDFFB6", "#CAFFBF",
+            "#9BF6FF", "#A0C4FF", "#BDB2FF", "#FFC6FF"
+        ];
         let hash = 0;
         for (let i = 0; i < userId.length; i++) {
             hash = userId.charCodeAt(i) + ((hash << 5) - hash);
         }
 
-        // Use sin to scramble the hash into distinct R, G, B components
-        const r = Math.floor(Math.abs(Math.sin(hash + 1) * 10000) % 256);
-        const g = Math.floor(Math.abs(Math.sin(hash + 2) * 10000) % 256);
-        const b = Math.floor(Math.abs(Math.sin(hash + 3) * 10000) % 256);
-
-        return `rgb(${r}, ${g}, ${b})`;
+        return pastelColors[Math.abs(hash) % pastelColors.length];
     };
 
     return (
