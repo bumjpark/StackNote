@@ -45,6 +45,16 @@ services:
           cpus: '3.6'
     restart: always
 
+  collaboration-server:
+    build:
+      context: ./collaboration-server
+      dockerfile: Dockerfile
+    container_name: stacknote-collaboration-server
+    ports:
+      - "8014:8000" # Collaboration Server 포트 8014 할당
+    restart: always
+
+
   frontend:
     build: ./frontend
     container_name: stacknote-frontend

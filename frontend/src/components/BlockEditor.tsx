@@ -7,6 +7,24 @@ import { type Block, BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core"
 import api from "../api/client";
 import { SmallCalendarBlock } from "./CalendarBlock";
 import { LargeCalendarBlock } from "./LargeCalendarBlock";
+import * as Y from "yjs";
+import { HocuspocusProvider } from "@hocuspocus/provider";
+
+// --- User Color Generator ---
+// VoiceChat (음성 채팅) 내의 아바타 프로필 색상과 동일한 로직 사용
+const getUserColor = (userId: string) => {
+    const pastelColors = [
+        "#FFADAD", "#FFD6A5", "#FDFFB6", "#CAFFBF",
+        "#9BF6FF", "#A0C4FF", "#BDB2FF", "#FFC6FF"
+    ];
+
+    let hash = 0;
+    for (let i = 0; i < userId.length; i++) {
+        hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+    }
+
+    return pastelColors[Math.abs(hash) % pastelColors.length];
+};
 
 // Create custom schema with Calendar blocks
 const schema = BlockNoteSchema.create({
@@ -38,18 +56,74 @@ function useDebounce<T>(value: T, delay: number): T {
 const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
     // Stores the current blocks in the editor
     const [blocks, setBlocks] = React.useState<any[]>([]);
-    const [initialContent] = React.useState<any[] | undefined>(undefined);
     const [isLoading, setIsLoading] = React.useState<boolean>(true);
 
-    // Auto-save status: 'saved' | 'saving' | 'dirty'
-    const [saveStatus, setSaveStatus] = React.useState<'saved' | 'saving' | 'dirty'>('saved');
+    // Auto-save status: 'saved' | 'saving' | 'dirty' | 'loading'
+    const [saveStatus, setSaveStatus] = React.useState<'saved' | 'saving' | 'dirty' | 'loading'>('saved');
+
+
+    // User info for Collaboration (Cursors, Presence)
+    const userInfo = React.useMemo(() => {
+        const name = localStorage.getItem('user_nickname') ||
+            localStorage.getItem('user_email')?.split('@')[0] ||
+            `Guest-${Math.floor(Math.random() * 1000)}`;
+
+        const userId = localStorage.getItem('user_id') || name;
+
+        return {
+            name,
+            color: getUserColor(userId)
+        };
+    }, []);
+
+    // Hocuspocus Provider Setup
+    const provider = React.useMemo(() => {
+        if (!pageId) return undefined;
+
+        const doc = new Y.Doc();
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const newProvider = new HocuspocusProvider({
+            url: `${protocol}//${window.location.host}/collaboration`,
+            name: `document-${pageId}`,
+            document: doc,
+        });
+
+        // Set awareness (cursor name and color)
+        newProvider.setAwarenessField("user", userInfo);
+
+        return newProvider;
+    }, [pageId, userInfo]);
+
+    // Track sync status
+    const [isSynced, setIsSynced] = React.useState(false);
+
+    useEffect(() => {
+        if (!provider) return;
+
+        // If already synced, set it immediately
+        if (provider.isSynced) {
+            setIsSynced(true);
+        }
+
+        const handleSynced = () => setIsSynced(true);
+        provider.on('synced', handleSynced);
+
+        return () => {
+            provider.off('synced', handleSynced);
+        }
+    }, [provider]);
 
     // Creates a new editor instance.
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const editor = useCreateBlockNote({
         schema,
-        initialContent: initialContent,
+        collaboration: provider ? {
+            provider,
+            fragment: provider.document.getXmlFragment("document-store"),
+            user: userInfo,
+        } : undefined,
         uploadFile: async (file: File) => {
             const body = new FormData();
             body.append('file', file);
@@ -68,7 +142,7 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
     // Handle items for suggestion menu
     const getSlashMenuItems = async (query: string) => {
         const defaultItems = await getDefaultReactSlashMenuItems(editor);
-        const filteredDefaults = defaultItems.filter(item => 
+        const filteredDefaults = defaultItems.filter(item =>
             item.title !== "Image" && item.title !== "이미지"
         );
 
@@ -118,7 +192,7 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
 
         return allItems.filter(item => {
             const titleMatch = item.title.toLowerCase().includes(queryLower);
-            const aliasMatch = item.aliases?.some(alias => 
+            const aliasMatch = item.aliases?.some(alias =>
                 alias.toLowerCase().includes(queryLower)
             );
             const groupMatch = item.group?.toLowerCase().includes(queryLower);
@@ -130,17 +204,10 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
     const isFetchingRef = useRef<boolean>(false);
 
     // Fetch initial blocks from backend
-    const fetchBlocks = React.useCallback(async (isPolling = false) => {
-        if (!pageId || !editor) return;
+    const fetchBlocks = React.useCallback(async () => {
+        if (!pageId || !editor || !isSynced) return;
 
-        // Skip polling if we have unsaved changes to prevent overwriting
-        if (isPolling && saveStatusRef.current !== 'saved') {
-            return;
-        }
-
-        if (!isPolling) setIsLoading(true);
-
-        // Mark as fetching start
+        setIsLoading(true);
         isFetchingRef.current = true;
 
         try {
@@ -167,52 +234,77 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                         return sorted;
                     };
                     const buildTree = (nodes: any[]): Block[] => {
-                        return nodes.map(n => ({
-                            id: n.id,
-                            type: n.type,
-                            props: n.props || {},
-                            content: n.content,
-                            children: buildTree((n.children_ids || [])
-                                .map((cid: string) => blockMap.get(cid))
-                                .filter((c: any) => c !== undefined))
-                        } as Block));
+                        return nodes.map(n => {
+                            const blockProps = (n.props && typeof n.props === 'object') ? n.props : {};
+
+                            const constructedBlock: any = {
+                                id: n.id,
+                                type: n.type,
+                                props: blockProps,
+                                children: buildTree((n.children_ids || [])
+                                    .map((cid: string) => blockMap.get(cid))
+                                    .filter((c: any) => c !== undefined))
+                            };
+
+                            // Prevent internal BlockNote crash by explicitly omitting 'content' if null
+                            if (n.content !== null && n.content !== undefined) {
+                                constructedBlock.content = n.content;
+                            }
+
+                            return constructedBlock as Block;
+                        });
                     };
                     return buildTree(sortNodes(rootBlocks));
                 };
 
                 let initialBlocks = reconstruct(dbBlocks);
 
-                if (JSON.stringify(initialBlocks) !== JSON.stringify(editor.document)) {
-                    editor.replaceBlocks(editor.document, initialBlocks);
-                    if (!isPolling) setBlocks(initialBlocks);
+
+                // With Collaboration, we only load from DB if the document is completely empty
+                // Otherwise, we rely on the Hocuspocus server state.
+                const isDocumentEmpty = editor.document.length === 0 ||
+                    (editor.document.length === 1 &&
+                        editor.document[0].type === "paragraph" &&
+                        (!editor.document[0].content || (Array.isArray(editor.document[0].content) && editor.document[0].content.length === 0)));
+
+                if (isDocumentEmpty && initialBlocks.length > 0) {
+                    try {
+                        if (editor.document.length === 0) {
+                            // If strictly empty array, we must create a placeholder to replace.
+                            editor.insertBlocks([{ type: "paragraph" }], editor.getTextCursorPosition().block || undefined as any, "after");
+                        }
+
+                        // Wait a microtask to let BlockNote digest if length was 0
+                        setTimeout(() => {
+                            try {
+                                editor.replaceBlocks(editor.document, initialBlocks);
+                                setBlocks(initialBlocks);
+                            } catch (err) {
+                                console.error("replaceBlocks fallback error", err);
+                            }
+                        }, 50); // Increased timeout slightly
+                    } catch (e) {
+                        console.error('Initial blocks injection failed', e);
+                    }
                 }
             }
         } catch (error) {
             console.error("Failed to fetch blocks", error);
         } finally {
-            // Reset fetching status AFTER a slight delay to allow onChange to fire and be ignored
             setTimeout(() => {
                 isFetchingRef.current = false;
             }, 50);
-
-            if (!isPolling) setIsLoading(false);
-            if (!isPolling) setSaveStatus('saved');
+            setIsLoading(false);
+            setSaveStatus('saved');
         }
-    }, [pageId, editor]);
+    }, [pageId, editor, isSynced]);
 
-    // Initial Fetch
+    // Fetch once Yjs is synced
     useEffect(() => {
-        fetchBlocks(false);
-    }, [fetchBlocks]);
-
-    // Polling Effect
-    useEffect(() => {
-        const interval = setInterval(() => {
-            fetchBlocks(true);
-        }, 30000); // Poll every 30 seconds
-
-        return () => clearInterval(interval);
-    }, [fetchBlocks]);
+        if (isSynced) {
+            fetchBlocks();
+        }
+    }, [isSynced, fetchBlocks]);
 
 
     // Save logic
@@ -454,25 +546,25 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                         item.onItemClick?.(editor);
                     }}
                     suggestionMenuComponent={(props: any) => (
-                        <div style={{ 
-                            background: '#25262B', 
-                            border: '1px solid #373A40', 
-                            borderRadius: '8px', 
-                            padding: '6px', 
-                            display: 'flex', 
-                            flexDirection: 'column', 
-                            gap: '2px', 
+                        <div style={{
+                            background: '#25262B',
+                            border: '1px solid #373A40',
+                            borderRadius: '8px',
+                            padding: '6px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '2px',
                             minWidth: '240px',
                             maxHeight: '350px',
                             overflowY: 'auto',
-                            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.1)' 
+                            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.1)'
                         }}>
                             {props.items.map((item: any, index: number) => (
-                                <div 
-                                    key={index} 
-                                    style={{ 
-                                        padding: '10px 12px', 
-                                        borderRadius: '4px', 
+                                <div
+                                    key={index}
+                                    style={{
+                                        padding: '10px 12px',
+                                        borderRadius: '4px',
                                         cursor: 'pointer',
                                         background: index === props.selectedIndex ? 'rgba(35, 131, 226, 0.28)' : 'transparent',
                                         display: 'flex',

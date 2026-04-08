@@ -102,17 +102,17 @@ const VoiceManager: React.FC = () => {
 
     // Helper to get consistent color from userId
     const getUserColor = (userId: string) => {
+        const pastelColors = [
+            "#FFADAD", "#FFD6A5", "#FDFFB6", "#CAFFBF",
+            "#9BF6FF", "#A0C4FF", "#BDB2FF", "#FFC6FF"
+        ];
+
         let hash = 0;
         for (let i = 0; i < userId.length; i++) {
             hash = userId.charCodeAt(i) + ((hash << 5) - hash);
         }
 
-        // Use sin to scramble the hash into distinct R, G, B components
-        const r = Math.floor(Math.abs(Math.sin(hash + 1) * 10000) % 256);
-        const g = Math.floor(Math.abs(Math.sin(hash + 2) * 10000) % 256);
-        const b = Math.floor(Math.abs(Math.sin(hash + 3) * 10000) % 256);
-
-        return `rgb(${r}, ${g}, ${b})`;
+        return pastelColors[Math.abs(hash) % pastelColors.length];
     };
 
     const handleSendChat = async (content: string = chatInput) => {
@@ -166,7 +166,8 @@ const VoiceManager: React.FC = () => {
                 ws.current?.send(JSON.stringify({
                     type: 'identify',
                     username: myUsername,
-                    id: myUserId
+                    id: myUserId,
+                    sender_user_id: myUserId
                 }));
             }
         };
@@ -565,13 +566,15 @@ const VoiceManager: React.FC = () => {
                 setChatMessages(prev => prev.filter(m => m.id !== data.id));
                 break;
             case 'identify':
-                if (String(data.sender_user_id) === String(myUserId)) return;
+                const senderId = data.sender_user_id || data.user_id || data.id;
+                if (!senderId) return;
+                if (String(senderId) === String(myUserId)) return;
                 const resolvedName =
-                    memberNameMap.get(String(data.sender_user_id)) ||
+                    memberNameMap.get(String(senderId)) ||
                     data.username;
                 setPeersInfo(prev => ({
                     ...prev,
-                    [data.sender_user_id]: {
+                    [senderId]: {
                         username: resolvedName,
                         isSpeaking: false,
                         isMuted: false,
@@ -580,11 +583,11 @@ const VoiceManager: React.FC = () => {
                 }));
                 // Handshake: If this was a request for identity exchange, reply back
                 if (data.requestReply) {
-                    console.log(`Replying to identity request from ${data.sender_user_id}`);
+                    console.log(`Replying to identity request from ${senderId}`);
                     sendSignal({
                         type: 'identify',
                         username: myUsername,
-                        target_user_id: data.sender_user_id,
+                        target_user_id: senderId,
                         requestReply: false // Don't ask them to reply again (infinite loop prevention)
                     });
                 }
