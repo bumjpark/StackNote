@@ -17,7 +17,7 @@ const getUserColor = (userId: string) => {
         "#FFADAD", "#FFD6A5", "#FDFFB6", "#CAFFBF",
         "#9BF6FF", "#A0C4FF", "#BDB2FF", "#FFC6FF"
     ];
-    
+
     let hash = 0;
     for (let i = 0; i < userId.length; i++) {
         hash = userId.charCodeAt(i) + ((hash << 5) - hash);
@@ -67,9 +67,9 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
         const name = localStorage.getItem('user_nickname') ||
             localStorage.getItem('user_email')?.split('@')[0] ||
             `Guest-${Math.floor(Math.random() * 1000)}`;
-            
+
         const userId = localStorage.getItem('user_id') || name;
-            
+
         return {
             name,
             color: getUserColor(userId)
@@ -236,7 +236,7 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                     const buildTree = (nodes: any[]): Block[] => {
                         return nodes.map(n => {
                             const blockProps = (n.props && typeof n.props === 'object') ? n.props : {};
-                            
+
                             const constructedBlock: any = {
                                 id: n.id,
                                 type: n.type,
@@ -262,10 +262,10 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
 
                 // With Collaboration, we only load from DB if the document is completely empty
                 // Otherwise, we rely on the Hocuspocus server state.
-                const isDocumentEmpty = editor.document.length === 0 || 
+                const isDocumentEmpty = editor.document.length === 0 ||
                     (editor.document.length === 1 &&
-                    editor.document[0].type === "paragraph" &&
-                    (!editor.document[0].content || (Array.isArray(editor.document[0].content) && editor.document[0].content.length === 0)));
+                        editor.document[0].type === "paragraph" &&
+                        (!editor.document[0].content || (Array.isArray(editor.document[0].content) && editor.document[0].content.length === 0)));
 
                 if (isDocumentEmpty && initialBlocks.length > 0) {
                     try {
@@ -273,7 +273,7 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
                             // If strictly empty array, we must create a placeholder to replace.
                             editor.insertBlocks([{ type: "paragraph" }], editor.getTextCursorPosition().block || undefined as any, "after");
                         }
-                        
+
                         // Wait a microtask to let BlockNote digest if length was 0
                         setTimeout(() => {
                             try {
