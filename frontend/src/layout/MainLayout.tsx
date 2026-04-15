@@ -4,6 +4,7 @@ import VoiceManager from '../features/VoiceChat/VoiceManager';
 import { useWorkspace, type Page } from '../context/WorkspaceContext';
 import {
     ChevronDown,
+    ChevronLeft,
     Plus,
     Users,
     UserPlus,
@@ -346,7 +347,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const [isUploading, setIsUploading] = useState(false);
     const [uploadingFileName, setUploadingFileName] = useState("");
     const [isVoiceViewActive, setIsVoiceViewActive] = useState(false);
-    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [sidebarOpen, setSidebarOpen] = useState(true);
 
     // File Upload Ref
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -491,13 +492,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     return (
         <div className="flex h-screen w-full overflow-hidden bg-bg-primary text-text-primary" style={{ display: 'flex', height: '100vh', width: '100%', overflow: 'hidden', position: 'relative' }}>
 
-            {/* Mobile Sidebar Toggle Button */}
+            {/* Sidebar Toggle Button — visible when sidebar is closed */}
             <button
-                className="sidebar-toggle-btn"
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                aria-label={sidebarOpen ? '사이드바 닫기' : '사이드바 열기'}
+                className={`sidebar-toggle-btn${!sidebarOpen ? ' show' : ''}`}
+                onClick={() => setSidebarOpen(true)}
+                aria-label="사이드바 열기"
             >
-                {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+                <Menu size={20} />
             </button>
 
             {/* Mobile Sidebar Overlay */}
@@ -507,7 +508,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             />
 
             {/* Sidebar */}
-            <aside className={`app-sidebar${sidebarOpen ? ' sidebar-open' : ''}`} style={{
+            <aside className={`app-sidebar${sidebarOpen ? ' sidebar-open' : ' sidebar-closed'}`} style={{
                 width: '240px',
                 backgroundColor: 'var(--bg-secondary)',
                 borderRight: '1px solid var(--border-color)',
@@ -839,7 +840,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                 </div>
 
                 {/* Bottom Actions */}
-                <div style={{ borderTop: '1px solid var(--border-color)', padding: '0.75rem' }}>
+                <div style={{ borderTop: '1px solid var(--border-color)', padding: '0.75rem', display: 'flex', alignItems: 'center' }}>
                     <div
                         onClick={handleLogout}
                         style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)', cursor: 'pointer' }}
@@ -847,6 +848,14 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     >
                         <LogOut size={16} /> Log out
                     </div>
+                    <button
+                        className="sidebar-close-btn"
+                        onClick={() => setSidebarOpen(false)}
+                        aria-label="사이드바 닫기"
+                        title="사이드바 접기"
+                    >
+                        <ChevronLeft size={16} />
+                    </button>
                 </div>
             </aside>
 

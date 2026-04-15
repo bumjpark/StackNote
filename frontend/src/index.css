@@ -135,9 +135,9 @@ button {
   }
 }
 
-/* Mobile Sidebar Toggle */
+/* Sidebar Toggle Button (open) — visible on all sizes when sidebar is closed */
 .sidebar-toggle-btn {
-  display: none; /* Hidden on desktop */
+  display: none; /* shown via JS only when sidebar is closed */
   position: fixed;
   top: 12px;
   left: 12px;
@@ -155,10 +155,41 @@ button {
   transition: background var(--transition-fast), transform var(--transition-fast);
 }
 
+.sidebar-toggle-btn.show {
+  display: flex;
+}
+
 .sidebar-toggle-btn:active {
   transform: scale(0.92);
 }
 
+/* Sidebar close button in footer */
+.sidebar-close-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.sidebar-close-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.sidebar-close-btn:active {
+  transform: scale(0.92);
+}
+
+/* Overlay for mobile */
 .sidebar-overlay {
   display: none;
   position: fixed;
@@ -167,25 +198,32 @@ button {
   z-index: 25;
   opacity: 0;
   transition: opacity var(--transition-normal);
+  pointer-events: none;
 }
 
 .sidebar-overlay.visible {
   opacity: 1;
+  pointer-events: auto;
+}
+
+/* Desktop: sidebar collapses with width transition */
+.app-sidebar {
+  transition: width var(--transition-normal), min-width var(--transition-normal), opacity var(--transition-normal);
+  overflow: hidden;
+}
+
+.app-sidebar.sidebar-closed {
+  width: 0 !important;
+  min-width: 0 !important;
+  border-right: none !important;
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* Mobile responsive */
 @media (max-width: 768px) {
-  .sidebar-toggle-btn {
-    display: flex;
-  }
-
   .sidebar-overlay {
     display: block;
-    pointer-events: none;
-  }
-
-  .sidebar-overlay.visible {
-    pointer-events: auto;
   }
 
   .app-sidebar {
@@ -198,14 +236,16 @@ button {
     transition: transform var(--transition-normal);
     z-index: 30 !important;
     box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .app-sidebar.sidebar-closed {
+    width: 260px !important;
+    opacity: 1;
   }
 
   .app-sidebar.sidebar-open {
     transform: translateX(0);
-  }
-
-  .app-main-content {
-    margin-left: 0 !important;
-    width: 100% !important;
   }
 }
