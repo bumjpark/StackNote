@@ -209,7 +209,6 @@ button {
 /* Desktop: sidebar collapses with width transition */
 .app-sidebar {
   transition: width var(--transition-normal), min-width var(--transition-normal), opacity var(--transition-normal);
-  overflow: hidden;
 }
 
 .app-sidebar.sidebar-closed {
@@ -218,6 +217,7 @@ button {
   border-right: none !important;
   opacity: 0;
   pointer-events: none;
+  overflow: hidden;
 }
 
 /* Mobile responsive */
