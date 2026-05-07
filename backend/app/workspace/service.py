@@ -491,7 +491,6 @@ def get_workspace_members(db: Session, workspace_id: int):
     workspace = db.query(WorkSpace).filter(WorkSpace.id == workspace_id).first()
     if not workspace:
         return []
-
     result = []
     
     # Add Owner
