@@ -265,6 +265,7 @@ def create_page_list(
             workspace_id=page_list_data.work_space_id,
             user_id=page_list_data.user_id,
             page_name=page_name,
+            page_type=page_list_data.page_type,
             parent_page_id=page_list_data.parent_page_id,
             is_deleted=False
         )
