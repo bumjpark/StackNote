@@ -257,7 +257,6 @@ def create_page_list(
     """
     페이지 리스트 생성 (여러 페이지 한번에)
     """
-
     created_page_ids: list[str] = []
 
     for page_name in page_list_data.page_list:
