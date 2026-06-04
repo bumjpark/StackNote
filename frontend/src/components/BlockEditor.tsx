@@ -9,6 +9,7 @@ import { SmallCalendarBlock } from "./CalendarBlock";
 import { LargeCalendarBlock } from "./LargeCalendarBlock";
 import * as Y from "yjs";
 import { HocuspocusProvider } from "@hocuspocus/provider";
+import { Printer } from "lucide-react";
 
 // --- User Color Generator ---
 // VoiceChat (음성 채팅) 내의 아바타 프로필 색상과 동일한 로직 사용
@@ -397,25 +398,53 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ pageId }) => {
 
     return (
         <div style={{ width: '100%', position: 'relative' }}>
-            {/* Save Status Indicator */}
+            {/* Toolbar & Save Status Indicator */}
             <div style={{
                 position: 'absolute',
-                top: -25,
+                top: -28,
                 right: 0,
-                fontSize: '12px',
-                color: saveStatus === 'saved' ? '#4CAF50' : saveStatus === 'saving' ? '#FFC107' : '#F44336',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '5px',
+                gap: '12px',
                 zIndex: 10
-            }}>
+            }} className="no-print">
+                {/* Print Button */}
+                <button
+                    onClick={() => window.print()}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '4px',
+                        borderRadius: '4px',
+                        color: 'var(--text-secondary)',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                    }}
+                    className="print-btn"
+                    title="Print / Save as PDF"
+                >
+                    <Printer size={16} />
+                </button>
+
+                {/* Save Status Indicator */}
                 <div style={{
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
-                    backgroundColor: saveStatus === 'saved' ? '#4CAF50' : saveStatus === 'saving' ? '#FFC107' : '#F44336'
-                }} />
-                {saveStatus === 'saved' ? 'Saved to Cloud' : saveStatus === 'saving' ? 'Saving...' : 'Unsaved Changes'}
+                    fontSize: '12px',
+                    color: saveStatus === 'saved' ? '#4CAF50' : saveStatus === 'saving' ? '#FFC107' : '#F44336',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                }}>
+                    <div style={{
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%',
+                        backgroundColor: saveStatus === 'saved' ? '#4CAF50' : saveStatus === 'saving' ? '#FFC107' : '#F44336'
+                    }} />
+                    {saveStatus === 'saved' ? 'Saved to Cloud' : saveStatus === 'saving' ? 'Saving...' : 'Unsaved Changes'}
+                </div>
             </div>
 
             {/* Custom CSS to force transparency on internal BlockNote/Mantine elements */}

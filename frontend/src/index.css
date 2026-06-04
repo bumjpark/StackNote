@@ -249,3 +249,101 @@ button {
     transform: translateX(0);
   }
 }
+
+/* Print Button Hover style */
+.print-btn:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Print Mode Styling */
+@media print {
+  @page {
+    margin: 0 !important;
+  }
+
+  /* Hide unnecessary elements during print */
+  aside,
+  nav,
+  header,
+  button,
+  .no-print,
+  .sidebar-toggle-btn,
+  .sidebar-overlay,
+  .sidebar-close-btn {
+    display: none !important;
+  }
+
+  /* Reset main layouts to fit paper */
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+    margin: 1.6cm 2cm !important; /* Custom margins for content since @page margin is 0 */
+  }
+
+  #root,
+  main,
+  .flex,
+  .h-screen {
+    background: #ffffff !important;
+    color: #111827 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+    margin: 0 !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+  }
+
+  /* Make sure editor content expands to fill width */
+  div[style*="max-width: 900px"] {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Override dark-mode text and background in BlockNote */
+  .bn-editor,
+  .bn-block-content {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+  }
+
+  .bn-block-content[data-content-type="heading"] h1,
+  .bn-block-content[data-content-type="heading"] h2,
+  .bn-block-content[data-content-type="heading"] h3,
+  .bn-heading {
+    color: #000000 !important;
+  }
+
+  /* Adjust divider color for printing */
+  .bn-block-content[data-content-type="divider"] {
+    background-color: rgba(0, 0, 0, 0.15) !important;
+  }
+
+  /* Hide placeholders (Enter text or type '/' for commands) in print mode */
+  .bn-block-content[data-is-empty-and-focused] .bn-inline-content::before,
+  .bn-block-content[data-is-empty-and-focused] .bn-inline-content:before,
+  .bn-block-content[data-is-only-empty-block] .bn-inline-content::before,
+  .bn-block-content[data-is-only-empty-block] .bn-inline-content:before,
+  .bn-block-content .bn-inline-content::before,
+  .bn-block-content .bn-inline-content:before,
+  .bn-inline-content::before,
+  .bn-inline-content:before {
+    display: none !important;
+    content: none !important;
+    opacity: 0 !important;
+    color: transparent !important;
+    visibility: hidden !important;
+  }
+}
