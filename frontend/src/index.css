@@ -332,16 +332,18 @@ button {
   }
 
   /* Hide placeholders (Enter text or type '/' for commands) in print mode */
-  .bn-inline-content[data-placeholder]::before,
-  [data-placeholder]::before,
-  [data-tmp-placeholder]::before,
-  .bn-placeholder::before,
-  .is-empty::before,
-  .placeholder,
-  [placeholder]::before {
+  .bn-block-content[data-is-empty-and-focused] .bn-inline-content::before,
+  .bn-block-content[data-is-empty-and-focused] .bn-inline-content:before,
+  .bn-block-content[data-is-only-empty-block] .bn-inline-content::before,
+  .bn-block-content[data-is-only-empty-block] .bn-inline-content:before,
+  .bn-block-content .bn-inline-content::before,
+  .bn-block-content .bn-inline-content:before,
+  .bn-inline-content::before,
+  .bn-inline-content:before {
     display: none !important;
-    content: "" !important;
+    content: none !important;
     opacity: 0 !important;
     color: transparent !important;
+    visibility: hidden !important;
   }
 }
