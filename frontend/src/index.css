@@ -258,6 +258,10 @@ button {
 
 /* Print Mode Styling */
 @media print {
+  @page {
+    margin: 0 !important;
+  }
+
   /* Hide unnecessary elements during print */
   aside,
   nav,
@@ -271,7 +275,16 @@ button {
   }
 
   /* Reset main layouts to fit paper */
-  body, 
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+    margin: 1.6cm 2cm !important; /* Custom margins for content since @page margin is 0 */
+  }
+
   #root,
   main,
   .flex,
@@ -282,6 +295,7 @@ button {
     min-height: 0 !important;
     overflow: visible !important;
     display: block !important;
+    margin: 0 !important;
   }
 
   main {
@@ -315,5 +329,19 @@ button {
   /* Adjust divider color for printing */
   .bn-block-content[data-content-type="divider"] {
     background-color: rgba(0, 0, 0, 0.15) !important;
+  }
+
+  /* Hide placeholders (Enter text or type '/' for commands) in print mode */
+  .bn-inline-content[data-placeholder]::before,
+  [data-placeholder]::before,
+  [data-tmp-placeholder]::before,
+  .bn-placeholder::before,
+  .is-empty::before,
+  .placeholder,
+  [placeholder]::before {
+    display: none !important;
+    content: "" !important;
+    opacity: 0 !important;
+    color: transparent !important;
   }
 }
